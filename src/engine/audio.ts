@@ -1,19 +1,16 @@
-/**
- * Web Audio mixer with music and SFX buses. Browsers only allow audio after a user gesture, so
- * call `unlock()` from the first click/key press (the title screen does this).
- *
- * The starter ships no audio files: SFX are synthesized and the music is a generative ambient
- * pad. To use recorded assets, `load(url)` an AudioBuffer and `playBuffer()` it on either bus.
- */
-export type Sfx = 'pickup' | 'jump' | 'land' | 'hurt' | 'ui' | 'win' | 'lose' | 'dash'
+/** Browser-safe Web Audio mixer. The river loop and short wildlife/gameplay cues are synthesized locally. */
+export type Sfx = 'pickup' | 'jump' | 'land' | 'hurt' | 'ui' | 'win' | 'lose' | 'dash' | 'eat' | 'bear-grunt' | 'bear-hit' | 'collision' | 'life-loss'
 
 export class Audio {
   readonly ctx: AudioContext
-  private master: GainNode
-  private music: GainNode
-  private sfx: GainNode
-  private musicTimer = 0
-  private musicOn = false
+  private readonly master: GainNode
+  private readonly music: GainNode
+  private readonly sfx: GainNode
+  private readonly musicBase: GainNode
+  private readonly sfxBase: GainNode
+  private readonly limiter: DynamicsCompressorNode
+  private riverSource?: AudioBufferSourceNode
+  private riverGain?: GainNode
   private buffers = new Map<string, AudioBuffer>()
 
   constructor() {
@@ -21,20 +18,35 @@ export class Audio {
     this.master = this.ctx.createGain()
     this.music = this.ctx.createGain()
     this.sfx = this.ctx.createGain()
-    this.music.connect(this.master)
-    this.sfx.connect(this.master)
-    this.master.connect(this.ctx.destination)
+    // Each sender crosses its intended absolute base-gain stage exactly once.
+    this.musicBase = this.ctx.createGain()
+    this.sfxBase = this.ctx.createGain()
+    this.musicBase.gain.value = 3
+    this.sfxBase.gain.value = 2
+    this.limiter = this.ctx.createDynamicsCompressor()
+    this.limiter.threshold.value = -1
+    this.limiter.knee.value = 0
+    this.limiter.ratio.value = 20
+    this.limiter.attack.value = 0.003
+    this.limiter.release.value = 0.12
+    this.music.connect(this.musicBase).connect(this.master)
+    this.sfx.connect(this.sfxBase).connect(this.master)
+    this.master.gain.value = 1
+    this.master.connect(this.limiter).connect(this.ctx.destination)
+    this.setVolumes(0.7, 0.8, false)
   }
 
   unlock(): void {
     if (this.ctx.state === 'suspended') void this.ctx.resume()
   }
 
-  /** Volumes in 0..1. */
+  /** Saved sliders are 0..1; user mixes stay bounded and the master peak guard remains active. */
   setVolumes(music: number, sfx: number, muted = false): void {
     const t = this.ctx.currentTime
-    this.music.gain.setTargetAtTime(muted ? 0 : music * 0.55, t, 0.05)
-    this.sfx.gain.setTargetAtTime(muted ? 0 : sfx * 0.8, t, 0.05)
+    const m = Math.max(0, Math.min(1, music))
+    const s = Math.max(0, Math.min(1, sfx))
+    this.music.gain.setTargetAtTime(muted ? 0 : (0.55 / 3) * m, t, 0.05)
+    this.sfx.gain.setTargetAtTime(muted ? 0 : (0.8 / 2) * s, t, 0.05)
   }
 
   async load(url: string): Promise<AudioBuffer> {
@@ -55,6 +67,55 @@ export class Audio {
     return src
   }
 
+  /** Start one continuous rushing-water bed, only after a player gesture. */
+  startRiver(): void {
+    if (this.riverSource) { this.resumeRiver(); return }
+    const length = Math.max(1, Math.floor(this.ctx.sampleRate * 3))
+    const buffer = this.ctx.createBuffer(1, length, this.ctx.sampleRate)
+    const channel = buffer.getChannelData(0)
+    let brown = 0
+    for (let i = 0; i < length; i += 1) {
+      const white = Math.random() * 2 - 1
+      brown = (brown + 0.035 * white) / 1.035
+      channel[i] = brown * 3.2
+    }
+    const source = this.ctx.createBufferSource()
+    const low = this.ctx.createBiquadFilter()
+    const high = this.ctx.createBiquadFilter()
+    const gain = this.ctx.createGain()
+    source.buffer = buffer
+    source.loop = true
+    low.type = 'lowpass'
+    low.frequency.value = 1200
+    high.type = 'highpass'
+    high.frequency.value = 75
+    gain.gain.value = 0.0001
+    source.connect(high).connect(low).connect(gain).connect(this.music)
+    source.start()
+    gain.gain.setTargetAtTime(0.2, this.ctx.currentTime, 0.7)
+    this.riverSource = source
+    this.riverGain = gain
+  }
+
+  pauseRiver(): void {
+    this.riverGain?.gain.setTargetAtTime(0.0001, this.ctx.currentTime, 0.08)
+  }
+
+  resumeRiver(): void {
+    if (!this.riverSource) { this.startRiver(); return }
+    this.riverGain?.gain.setTargetAtTime(0.2, this.ctx.currentTime, 0.3)
+  }
+
+  stopRiver(): void {
+    const source = this.riverSource
+    const gain = this.riverGain
+    if (!source || !gain) return
+    gain.gain.setTargetAtTime(0.0001, this.ctx.currentTime, 0.06)
+    this.riverSource = undefined
+    this.riverGain = undefined
+    window.setTimeout(() => { try { source.stop() } catch { /* already stopped */ } }, 260)
+  }
+
   play(name: Sfx): void {
     if (this.ctx.state !== 'running') return
     const t = this.ctx.currentTime
@@ -65,57 +126,69 @@ export class Audio {
       o.frequency.setValueAtTime(freq, t + delay)
       o.frequency.exponentialRampToValueAtTime(Math.max(end, 20), t + delay + dur)
       g.gain.setValueAtTime(0.0001, t + delay)
-      g.gain.exponentialRampToValueAtTime(vol, t + delay + 0.012)
+      g.gain.exponentialRampToValueAtTime(Math.min(vol, 0.7), t + delay + 0.012)
       g.gain.exponentialRampToValueAtTime(0.0001, t + delay + dur)
       o.connect(g).connect(this.sfx)
       o.start(t + delay)
       o.stop(t + delay + dur + 0.05)
     }
+    const noise = (dur: number, lowHz: number, highHz: number, volume: number) => {
+      const n = Math.max(1, Math.floor(this.ctx.sampleRate * dur))
+      const buffer = this.ctx.createBuffer(1, n, this.ctx.sampleRate)
+      const data = buffer.getChannelData(0)
+      for (let i = 0; i < n; i += 1) data[i] = (Math.random() * 2 - 1) * (1 - i / n)
+      const src = this.ctx.createBufferSource()
+      const high = this.ctx.createBiquadFilter()
+      const low = this.ctx.createBiquadFilter()
+      const gain = this.ctx.createGain()
+      src.buffer = buffer
+      high.type = 'highpass'; high.frequency.value = lowHz
+      low.type = 'lowpass'; low.frequency.value = highHz
+      gain.gain.setValueAtTime(Math.min(volume, 0.4), t)
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + dur)
+      src.connect(high).connect(low).connect(gain).connect(this.sfx)
+      src.start(t); src.stop(t + dur + 0.02)
+    }
+    const bear = (low: number, high: number, dur: number, volume: number) => {
+      const osc = this.ctx.createOscillator()
+      const formant = this.ctx.createBiquadFilter()
+      const gain = this.ctx.createGain()
+      osc.type = 'sawtooth'
+      osc.frequency.setValueAtTime(low, t)
+      osc.frequency.exponentialRampToValueAtTime(high, t + dur)
+      formant.type = 'bandpass'
+      formant.frequency.value = 360
+      formant.Q.value = 1.1
+      gain.gain.setValueAtTime(0.0001, t)
+      gain.gain.exponentialRampToValueAtTime(Math.min(volume, 0.3), t + 0.04)
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + dur)
+      osc.connect(formant).connect(gain).connect(this.sfx)
+      osc.start(t); osc.stop(t + dur + 0.03)
+    }
+
     switch (name) {
-      case 'pickup': tone(880, 1320, 0.12, 'triangle', 0.35); tone(1320, 1760, 0.16, 'sine', 0.25, 0.06); break
+      case 'eat':
+      case 'pickup':
+        noise(0.17, 420, 2600, 0.15)
+        tone(640, 980, 0.13, 'triangle', 0.22)
+        tone(980, 1320, 0.16, 'sine', 0.16, 0.07)
+        bear(150, 110, 0.12, 0.08)
+        break
+      case 'bear-grunt': bear(130 + Math.random() * 20, 82, 0.34, 0.13); noise(0.16, 100, 680, 0.07); break
+      case 'bear-hit': bear(185, 70, 0.43, 0.23); break
+      case 'collision':
+      case 'hurt': noise(0.2, 45, 430, 0.24); tone(115, 42, 0.24, 'triangle', 0.24); break
+      case 'life-loss': tone(760, 390, 0.24, 'triangle', 0.18); tone(390, 230, 0.3, 'sine', 0.12, 0.18); break
       case 'jump': tone(300, 620, 0.14, 'square', 0.12); break
-      case 'land': tone(160, 70, 0.1, 'sine', 0.25); break
-      case 'hurt': tone(220, 90, 0.28, 'sawtooth', 0.22); break
-      case 'ui': tone(660, 700, 0.06, 'triangle', 0.18); break
+      case 'land': tone(160, 70, 0.1, 'sine', 0.18); break
+      case 'ui': tone(660, 700, 0.06, 'triangle', 0.14); break
       case 'dash': tone(500, 180, 0.18, 'sawtooth', 0.1); break
-      case 'win': [523, 659, 784, 1047].forEach((f, i) => tone(f, f * 1.01, 0.3, 'triangle', 0.25, i * 0.11)); break
-      case 'lose': [392, 330, 262].forEach((f, i) => tone(f, f * 0.98, 0.38, 'sine', 0.25, i * 0.16)); break
+      case 'win': [523, 659, 784, 1047].forEach((f, i) => tone(f, f * 1.01, 0.3, 'triangle', 0.17, i * 0.11)); break
+      case 'lose':
+        noise(0.48, 35, 380, 0.12)
+        bear(110, 54, 0.68, 0.27)
+        ;[330, 262, 196].forEach((f, i) => tone(f, f * 0.78, 0.34, 'sine', 0.13, i * 0.19))
+        break
     }
-  }
-
-  /** Generative ambient pad: slow chord changes on a pentatonic set, scheduled ahead of time. */
-  startMusic(): void {
-    if (this.musicOn) return
-    this.musicOn = true
-    const chords = [[220, 277.2, 329.6], [196, 246.9, 293.7], [174.6, 220, 261.6], [196, 261.6, 329.6]]
-    let bar = 0
-    const schedule = () => {
-      if (!this.musicOn) return
-      const t = this.ctx.currentTime + 0.05
-      const chord = chords[bar % chords.length]
-      for (const f of chord) {
-        for (const detune of [-6, 6]) {
-          const o = this.ctx.createOscillator()
-          const g = this.ctx.createGain()
-          o.type = 'sine'
-          o.frequency.value = f / 2
-          o.detune.value = detune
-          g.gain.setValueAtTime(0.0001, t)
-          g.gain.linearRampToValueAtTime(0.05, t + 1.2)
-          g.gain.linearRampToValueAtTime(0.0001, t + 4.2)
-          o.connect(g).connect(this.music)
-          o.start(t)
-          o.stop(t + 4.4)
-        }
-      }
-      bar += 1
-      this.musicTimer = window.setTimeout(schedule, 3600)
-    }
-    schedule()
-  }
-
-  stopMusic(): void {
-    this.musicOn = false
-    clearTimeout(this.musicTimer)
   }
 }

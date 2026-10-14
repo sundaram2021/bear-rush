@@ -1,95 +1,68 @@
 import * as THREE from 'three'
 
-type Core = { mesh: THREE.Group; home: THREE.Vector3; taken: boolean; phase: number }
+type Salmon = { root: THREE.Group; homeX: number; pace: number; phase: number; caught: boolean }
 
-/**
- * Energy cores: the run's objective. Pickup is a distance check against the player each fixed
- * step (cheaper and simpler than sensor colliders for a few dozen static items).
- */
+/** Dynamically spawned salmon; the low-poly geometry is a gameplay blockout until model sourcing is restored. */
 export class Collectibles {
   readonly group = new THREE.Group()
-  private cores: Core[] = []
+  private fish: Salmon[] = []
   private time = 0
+  private readonly bodyGeo = new THREE.SphereGeometry(0.55, 14, 10)
+  private readonly bodyMat = new THREE.MeshStandardMaterial({ color: '#ef7d49', roughness: 0.58, metalness: 0.08, flatShading: true })
+  private readonly finMat = new THREE.MeshStandardMaterial({ color: '#f3ac69', roughness: 0.72, flatShading: true })
+  private readonly eyeMat = new THREE.MeshBasicMaterial({ color: '#241d18' })
 
-  constructor(spots: THREE.Vector3[]) {
-    const gem = new THREE.OctahedronGeometry(0.34, 0)
-    const gemMat = new THREE.MeshStandardMaterial({ color: '#ffd35c', emissive: '#ffb020', emissiveIntensity: 3, flatShading: true, roughness: 0.25 })
-    const ringGeo = new THREE.TorusGeometry(0.55, 0.035, 6, 32)
-    const ringMat = new THREE.MeshBasicMaterial({ color: '#fff3c4', transparent: true, opacity: 0.8 })
-    const halo = haloTexture()
-    for (const spot of spots) {
-      const mesh = new THREE.Group()
-      const g = new THREE.Mesh(gem, gemMat)
-      g.castShadow = true
-      const ring = new THREE.Mesh(ringGeo, ringMat)
-      ring.rotation.x = Math.PI / 2
-      const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: halo, color: '#ffc94a', transparent: true, opacity: 0.75, depthWrite: false, blending: THREE.AdditiveBlending }))
-      glow.scale.setScalar(2.2)
-      mesh.add(glow, g, ring)
-      mesh.position.copy(spot)
-      this.group.add(mesh)
-      this.cores.push({ mesh, home: spot.clone(), taken: false, phase: spot.x * 0.7 + spot.z * 0.3 })
-    }
-  }
-
-  get total(): number {
-    return this.cores.length
-  }
-
-  /** Positions of cores still in play (for the HUD compass / hints). */
-  remaining(): THREE.Vector3[] {
-    return this.cores.filter(c => !c.taken).map(c => c.home)
-  }
-
-  /** Returns the positions of cores picked up this step. */
-  collect(player: THREE.Vector3, radius: number): THREE.Vector3[] {
-    const got: THREE.Vector3[] = []
-    for (const c of this.cores) {
-      if (c.taken) continue
-      if (c.home.distanceToSquared(player) < radius * radius) {
-        c.taken = true
-        c.mesh.visible = false
-        got.push(c.home.clone())
-      }
-    }
-    return got
+  spawn(x: number, z: number, pace = 1): void {
+    const root = new THREE.Group()
+    const body = new THREE.Mesh(this.bodyGeo, this.bodyMat)
+    body.scale.set(0.45, 0.28, 1)
+    body.castShadow = true
+    root.add(body)
+    const tail = new THREE.Mesh(new THREE.ConeGeometry(0.28, 0.55, 3), this.finMat)
+    tail.rotation.x = Math.PI / 2
+    tail.position.z = 0.64
+    tail.scale.set(0.72, 1, 0.8)
+    root.add(tail)
+    const fin = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.32, 3), this.finMat)
+    fin.rotation.z = Math.PI
+    fin.position.set(0, 0.25, 0.05)
+    root.add(fin)
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 6), this.eyeMat)
+    eye.position.set(0.16, 0.06, -0.32)
+    root.add(eye)
+    root.position.set(x, 0.43, z)
+    root.rotation.y = Math.PI
+    this.group.add(root)
+    this.fish.push({ root, homeX: x, pace, phase: Math.random() * Math.PI * 2, caught: false })
   }
 
   reset(): void {
-    for (const c of this.cores) {
-      c.taken = false
-      c.mesh.visible = true
-    }
+    for (const f of this.fish) this.group.remove(f.root)
+    this.fish = []
+    this.time = 0
   }
 
-  animate(frameSeconds: number): void {
-    this.time += frameSeconds
-    for (const c of this.cores) {
-      if (c.taken) continue
-      c.mesh.position.y = c.home.y + Math.sin(this.time * 2.2 + c.phase) * 0.14
-      c.mesh.children[1].rotation.y = this.time * 1.8 + c.phase
-      c.mesh.children[2].rotation.z = this.time * 0.9
-      const pulse = 1 + Math.sin(this.time * 4 + c.phase) * 0.08
-      c.mesh.children[2].scale.setScalar(pulse)
+  step(dt: number, riverSpeed: number, playerX: number, playerZ = 0): THREE.Vector3[] {
+    this.time += dt
+    const got: THREE.Vector3[] = []
+    const keep: Salmon[] = []
+    for (const f of this.fish) {
+      f.root.position.z += riverSpeed * f.pace * dt
+      f.root.position.y = 0.4 + Math.sin(this.time * 5 + f.phase) * 0.07
+      f.root.rotation.z = Math.sin(this.time * 4 + f.phase) * 0.09
+      const dx = Math.abs(f.root.position.x - playerX)
+      const dz = Math.abs(f.root.position.z - playerZ)
+      if (!f.caught && dx < 1.1 && dz < 1.25) {
+        f.caught = true
+        got.push(f.root.position.clone())
+        this.group.remove(f.root)
+      } else if (f.root.position.z < 12) {
+        keep.push(f)
+      } else {
+        this.group.remove(f.root)
+      }
     }
+    this.fish = keep
+    return got
   }
-}
-
-/** Soft radial gradient drawn once to a canvas; shared by every glow sprite. */
-let haloCache: THREE.Texture | undefined
-export function haloTexture(): THREE.Texture {
-  if (haloCache) return haloCache
-  const size = 128
-  const canvas = document.createElement('canvas')
-  canvas.width = canvas.height = size
-  const ctx = canvas.getContext('2d')!
-  const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2)
-  g.addColorStop(0, 'rgba(255,255,255,1)')
-  g.addColorStop(0.25, 'rgba(255,255,255,0.45)')
-  g.addColorStop(1, 'rgba(255,255,255,0)')
-  ctx.fillStyle = g
-  ctx.fillRect(0, 0, size, size)
-  haloCache = new THREE.CanvasTexture(canvas)
-  haloCache.colorSpace = THREE.SRGBColorSpace
-  return haloCache
 }

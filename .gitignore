@@ -1,4 +1,12 @@
 node_modules/
 dist/
 shots/
+coverage/
+playwright-report/
+test-results/
+.env
+.env.*
+!.env.example
+*.pem
+*.key
 /.manus-webdev/preview-identity.json

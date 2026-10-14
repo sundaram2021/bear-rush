@@ -1,40 +1,37 @@
 import { describe, expect, it } from 'vitest'
-import { defaultSave, insertScore, LEADERBOARD_SIZE, parseSave, SAVE_KEY, SaveStore } from '../src/engine/save'
+import { defaultSave, parseSave, SAVE_KEY, SaveStore } from '../src/engine/save'
 
-describe('save', () => {
-  it('falls back to defaults for missing, corrupt or foreign data', () => {
+describe('browser-local save', () => {
+  it('falls back to defaults for missing, corrupt, array, or foreign-version data', () => {
     expect(parseSave(null)).toEqual(defaultSave())
     expect(parseSave('{nope')).toEqual(defaultSave())
     expect(parseSave('[]')).toEqual(defaultSave())
-    expect(parseSave(JSON.stringify({ version: 99, musicVolume: 0.1 }))).toEqual(defaultSave())
+    expect(parseSave(JSON.stringify({ version: 1, bestScore: 800 }))).toEqual(defaultSave())
   })
 
-  it('clamps and validates fields', () => {
-    const s = parseSave(JSON.stringify({ version: 1, musicVolume: 5, sfxVolume: -1, locale: 'fr', quality: 'ultra', sensitivity: 9, playerName: '  a very long player name here ' }))
-    expect(s.musicVolume).toBe(1)
-    expect(s.sfxVolume).toBe(0)
-    expect(s.locale).toBe('')
-    expect(s.quality).toBe('high')
-    expect(s.sensitivity).toBe(1)
-    expect(s.playerName).toBe('a very long play')
+  it('clamps settings and validates personal-best fields', () => {
+    const save = parseSave(JSON.stringify({ version: 2, musicVolume: 5, sfxVolume: -1, muted: true, quality: 'ultra', bestScore: 340.8, bestFish: -2, bestDistance: 44.6, bestTime: 'bad' }))
+    expect(save.musicVolume).toBe(1)
+    expect(save.sfxVolume).toBe(0)
+    expect(save.muted).toBe(true)
+    expect(save.quality).toBe('medium')
+    expect(save.bestScore).toBe(340)
+    expect(save.bestFish).toBe(0)
+    expect(save.bestDistance).toBe(44.6)
+    expect(save.bestTime).toBe(0)
   })
 
-  it('keeps a bounded, ordered leaderboard', () => {
-    let board = [] as ReturnType<typeof defaultSave>['leaderboard']
-    for (let i = 0; i < LEADERBOARD_SIZE + 3; i += 1) board = insertScore(board, { name: `p${i}`, score: i * 10, seconds: 60, at: i }).board
-    expect(board).toHaveLength(LEADERBOARD_SIZE)
-    expect(board[0].score).toBe((LEADERBOARD_SIZE + 2) * 10)
-    const tie = insertScore(board, { name: 'fast', score: board[0].score, seconds: 30, at: 999 })
-    expect(tie.rank).toBe(0)
-    expect(insertScore(board, { name: 'low', score: 0, seconds: 1, at: 1 }).rank).toBe(-1)
+  it('saves and reloads settings and best-run statistics using the local key only', () => {
+    const memory = new Map<string, string>()
+    const storage = { getItem: (key: string) => memory.get(key) ?? null, setItem: (key: string, value: string) => void memory.set(key, value) }
+    new SaveStore(storage).update({ musicVolume: 0.3, bestScore: 900, bestFish: 7, bestDistance: 122.5, bestTime: 16.2 })
+    expect(JSON.parse(memory.get(SAVE_KEY)!).musicVolume).toBe(0.3)
+    expect(new SaveStore(storage).data.bestScore).toBe(900)
+    expect(new SaveStore(storage).data.bestFish).toBe(7)
+    expect(memory.size).toBe(1)
   })
 
-  it('persists through storage and survives storage errors', () => {
-    const mem = new Map<string, string>()
-    const storage = { getItem: (k: string) => mem.get(k) ?? null, setItem: (k: string, v: string) => void mem.set(k, v) }
-    new SaveStore(storage).update({ musicVolume: 0.3, locale: 'zh-CN' })
-    expect(JSON.parse(mem.get(SAVE_KEY)!).musicVolume).toBe(0.3)
-    expect(new SaveStore(storage).data.locale).toBe('zh-CN')
+  it('keeps the game playable if browser storage access fails', () => {
     const broken = { getItem: () => { throw new Error('denied') }, setItem: () => { throw new Error('quota') } }
     const store = new SaveStore(broken)
     expect(() => store.update({ muted: true })).not.toThrow()
