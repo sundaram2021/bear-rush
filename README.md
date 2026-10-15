@@ -1,66 +1,60 @@
-# Bear Rush: Salmon Run
+# Bear Rush: Salmon Hunt
 
-A fully 3D browser prototype: steer a hungry bear through a rushing forest river, eat salmon, and dodge fallen trunks. The river and fish speed up as the run continues. Start with three lives; each tree collision removes one life, the run continues while any remain, and game over occurs only at zero. There is no timer fail state.
+A fully 3D browser wildlife game set in a forest valley. The bear stands on a riverbank and actively hunts salmon: fish swim downstream and leap into a short catch window; press a button at the right moment to swipe. Fish missed on a pass do not cost a life. The stream bends and rises/falls through the forest while current and fish speed gradually increase to a cap.
 
-The supplied bear-at-a-cascade photograph guides the setting and species, but is not used as a game background. The current prototype uses simple low-poly geometry for the bear, salmon, and fallen-log hazards. Final 3D models are **not complete**: the approved catalog-first model workflow cannot currently bind to this game project. Keep these as temporary prototype stand-ins, not final art.
+The supplied bear-at-a-cascade photograph guides the mood and hunting scene, but is not a literal game background. The bear, fish, trees and environment still use prototype low-poly/procedural geometry. Final catalog-sourced 3D models are **not complete**: catalog access for the existing project returned a project-unbound error. No new generated models were created.
 
 ## Run locally
 
 ```bash
 pnpm install
 pnpm dev -- --host 0.0.0.0 --port 3000
-pnpm build     # TypeScript + Vite build + size checks
-pnpm test      # unit tests
-pnpm smoke     # after build; desktop/mobile browser flow and screenshots in shots/
+pnpm typecheck
+pnpm test
+pnpm build     # TypeScript + Vite production build + size checks
+pnpm smoke     # desktop/mobile Playwright checks; saves screenshots in shots/
 ```
 
-Audio starts after the player begins a run because browsers require a user gesture to enable Web Audio.
+Sound starts after the player's first gesture because browsers require an interaction to enable Web Audio.
 
 ## Controls and rules
 
-- **Desktop:** `A` / `D` or left/right arrow keys to steer. `Esc` pauses; `Esc` from Pause resumes. The HUD pause control is also available.
-- **Mobile:** drag the on-screen stick left or right.
-- **Goal:** eat salmon to grow the fish count and score; missing fish has no penalty. Steer around fallen-tree obstacles.
-- **Lives:** three per run. Every tree collision costs one life. A short recovery window prevents one collision from subtracting several lives. The run ends only after life three is lost.
-- **Difficulty:** forward/current speed rises smoothly and caps; fish and hazard cadence also become more demanding while leaving safe routes.
-- **Results:** fish eaten, score, distance, survival time, and a browser-local personal best.
+- **Desktop:** A/D or Left/Right adjust footing toward/away from the water; W/S or Up/Down walk along the bank. Space or E swipes to catch a leaping fish. Escape/P pauses.
+- **Mobile:** use the left virtual stick to adjust the bear's footing and tap the large **Catch** button to swipe.
+- **Catch:** a deliberate, well-timed swipe is required when a salmon leaps within reach. Successful catches add fish and score; missed fish or a mistimed swipe cost no lives.
+- **Wood:** small floating blocks follow the winding river. Every distinct block contact adds one strike; the second strike removes one life and resets the 0/2 counter.
+- **Harmful algae:** one contact/eating event immediately removes one life. Algae is visually distinct from salmon.
+- **Lives:** start with three. There is no timer-based game over. The run ends only after the third life is lost.
+- **Difficulty:** river/fish pace rises smoothly and caps. Distance, survival time and local best are shown in the HUD/results.
 
-## Privacy and saving
+## Privacy and audio
 
-No login, sign-up, server, online leaderboard, or analytics. Settings and the personal best are stored only in this browser using local storage. They do not sync between devices and may be cleared if the player removes this browser's site data. The game keeps safe defaults if storage is unavailable.
-
-## Sound
-
-The prototype synthesizes sound with Web Audio: continuous rushing water, bear movement/eating/hit/game-over vocalizations, salmon-catching splash/score feedback, and tree impact/life-loss cues. Music/effect volume and mute are configurable; critical gameplay feedback is also visual.
+No login, sign-up, server, online leaderboard, or analytics. Settings and personal best are stored only in this browser's local storage; they do not sync across devices. The game uses a quiet continuous rushing-water bed plus separate synthesized catch/bear, block-contact, algae and life-loss cues. Mute and water/effects volume controls are available. Visual cues are also provided so sound is never required to understand play.
 
 ## Code map
 
 | Path | Responsibility |
-| --- | --- |
-| `src/game/game.ts` | Run lifecycle, spawns, fish pickup, collision/life transitions, audio and UI events. |
-| `src/game/world.ts` | River, forest banks, rocks, lighting, and moving foam. |
-| `src/game/player.ts` | Bear stand-in, lateral steering, run/hit animation. |
-| `src/game/collectibles.ts` | Salmon pickup movement and contact collection. |
-| `src/game/obstacles.ts` | Fallen-log patterns, motion, and collision window. |
-| `src/game/rules.ts` | Pure scoring, speed curve, elapsed distance, recovery, and three-life rules. |
-| `src/game/config.ts`, `src/game/tuning.ts` | Runtime defaults and the preserved development-only Tweak bridge. |
-| `src/engine/audio.ts` | River ambience and synthesized game sound cues. |
-| `src/engine/save.ts` | Versioned local settings and best-run record. |
-| `src/engine/input.ts`, `src/ui/touch.ts` | Keyboard and touch steering. |
-| `src/ui/`, `src/styles/main.css` | English-only menu, tutorial, HUD, pause, settings, results and touch interface. |
-| `tests/`, `scripts/smoke.mjs` | Rules/save/tuning/obstacle tests and end-to-end browser verification. |
-
-## Preview Tweak
-
-`src/game/tuning.ts` remains the single game-owned parameter manager. The development-only adapter at `scripts/manus-tuning/adapter.js` registers its real controls; live values are consumed by gameplay, while next-run values activate in `Game.start`. The UI does not save Tweak overrides. Preserve this manager and its dev-only bridge when continuing the game.
+|---|---|
+| `src/game/game.ts` | Fishing-run lifecycle, timed catch action, hazard spawning/contact, audio and UI hooks. |
+| `src/game/world.ts` | Layered forest, curved/undulating river path, banks, rocks, foam and foliage animation. |
+| `src/game/player.ts` | Bank-side bear placement, movement and catch/hit animation. |
+| `src/game/collectibles.ts` | Salmon downstream swimming, leap timing and explicit catch window. |
+| `src/game/obstacles.ts` | River-following small wood and algae, one-shot collision reporting. |
+| `src/game/rules.ts` | Fish score, current curve, three lives, two-block rule and immediate algae damage. |
+| `src/game/config.ts`, `src/game/tuning.ts` | Gameplay defaults and the preserved development-only Tweak bridge. |
+| `src/engine/audio.ts` | Quiet river ambience and synthesized catch, bear, block and algae sounds. |
+| `src/engine/save.ts` | Browser-local settings and personal-best record. |
+| `src/engine/input.ts`, `src/ui/touch.ts` | Keyboard/gamepad movement, Catch and touch controls. |
+| `src/ui/`, `src/styles/main.css`, `src/i18n/en.json` | English title/tutorial, fish/score/lives/wood HUD, touch control, settings and results. |
+| `tests/`, `scripts/smoke.mjs` | Rules, river-following hazards, tuning and real browser verification. |
 
 ## Current verification
 
 - `pnpm typecheck`: passed.
-- `pnpm test`: **34 tests passed**.
-- `pnpm build`: passed; compressed JS/font/transfer size report is approximately **1.17 MB** total.
-- `pnpm smoke`: passed for steering, fish scoring, pause/settings, three-life game over, local best saving, English-only browser behavior, and mobile HUD. Screenshots are under `shots/`.
+- `pnpm test`: passed, 36 tests.
+- `pnpm build`: passed, approx. 1.18 MB compressed JS/font/transfer-size report.
+- `pnpm smoke`: passed, desktop/mobile check for bank movement, deliberate fish catch, two separate wood strikes, algae damage, three-life end state, local best and English-only UI.
 
 ## Credits
 
-Bundled ManusCC0 fonts, including their supplied license notices, are retained. Runtime libraries: Three.js (MIT) and Rapier (Apache-2.0; kept in the starter dependency set).
+Bundled ManusCC0 fonts and their license notices are retained. Runtime libraries: Three.js (MIT) and Rapier (Apache-2.0; retained in the starter dependency set).

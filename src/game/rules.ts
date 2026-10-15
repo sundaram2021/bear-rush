@@ -14,7 +14,8 @@ export type RunState = {
   collected: number
   combo: number
   comboTimer: number
-  invulnerable: number
+  /** Small-block contacts accumulated toward the next life loss; always 0 or 1. */
+  blockHits: number
 }
 
 export function createRun(rules = CONFIG): RunState {
@@ -28,7 +29,7 @@ export function createRun(rules = CONFIG): RunState {
     collected: 0,
     combo: 0,
     comboTimer: 0,
-    invulnerable: 0,
+    blockHits: 0,
   }
 }
 
@@ -37,11 +38,11 @@ export function riverSpeed(elapsed: number, rules = CONFIG): number {
 }
 
 export function fishInterval(elapsed: number, rules = CONFIG): number {
-  return Math.max(rules.run.fishIntervalFloor, rules.run.fishInterval - Math.max(0, elapsed) * 0.004)
+  return Math.max(rules.run.fishIntervalFloor, rules.run.fishInterval - Math.max(0, elapsed) * 0.006)
 }
 
-export function obstacleInterval(elapsed: number, rules = CONFIG): number {
-  return Math.max(rules.run.obstacleIntervalFloor, rules.run.obstacleInterval - Math.max(0, elapsed) * 0.009)
+export function hazardInterval(elapsed: number, rules = CONFIG): number {
+  return Math.max(rules.run.hazardIntervalFloor, rules.run.hazardInterval - Math.max(0, elapsed) * 0.008)
 }
 
 export function tick(s: RunState, dt: number, speed = riverSpeed(s.elapsed)): RunState {
@@ -53,7 +54,6 @@ export function tick(s: RunState, dt: number, speed = riverSpeed(s.elapsed)): Ru
     distance: s.distance + speed * dt,
     comboTimer,
     combo: comboTimer > 0 ? s.combo : 0,
-    invulnerable: Math.max(0, s.invulnerable - dt),
   }
 }
 
@@ -67,12 +67,25 @@ export function collect(s: RunState, rules = CONFIG): { state: RunState; points:
   }
 }
 
-/** Every accepted tree collision costs exactly one life; the invulnerability timer rejects repeats. */
-export function damage(s: RunState, rules = CONFIG): { state: RunState; hurt: boolean } {
-  if (s.phase !== 'playing' || s.invulnerable > 0) return { state: s, hurt: false }
+function loseLife(s: RunState): RunState {
+  if (s.phase !== 'playing') return s
   const lives = Math.max(0, s.lives - 1)
-  const next: RunState = { ...s, lives, combo: 0, comboTimer: 0, invulnerable: rules.run.recoverySeconds }
   return lives === 0
-    ? { state: { ...next, phase: 'lost', loseReason: 'lives' }, hurt: true }
-    : { state: next, hurt: true }
+    ? { ...s, lives, phase: 'lost', loseReason: 'lives', combo: 0, comboTimer: 0 }
+    : { ...s, lives, combo: 0, comboTimer: 0 }
+}
+
+/** Every second distinct small-block contact removes one life; the strike meter then restarts. */
+export function hitSmallBlock(s: RunState, rules = CONFIG): { state: RunState; strike: number; lifeLost: boolean } {
+  if (s.phase !== 'playing') return { state: s, strike: s.blockHits, lifeLost: false }
+  const hits = s.blockHits + 1
+  if (hits < rules.run.blockHitsPerLife) return { state: { ...s, blockHits: hits }, strike: hits, lifeLost: false }
+  const next = loseLife({ ...s, blockHits: 0 })
+  return { state: next, strike: 0, lifeLost: true }
+}
+
+/** One harmful-algae contact immediately removes one life; partial block progress remains visible. */
+export function eatAlgae(s: RunState): { state: RunState; lifeLost: boolean } {
+  if (s.phase !== 'playing') return { state: s, lifeLost: false }
+  return { state: loseLife(s), lifeLost: true }
 }

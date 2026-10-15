@@ -1,43 +1,26 @@
 # Bear Rush — Outcome status
 
-## Implemented and verified in the playable Preview
+## Completed in the current prototype
 
-### Endless river run and salmon scoring — complete
-- Fully 3D browser scene with the bear advancing through a forest-river corridor; desktop and touch steering.
-- Salmon travel through the river channel and are eaten for fish count and score. Missing one has no life penalty.
-- River/forward and fish speed ramp smoothly with elapsed run time and have a cap; obstacle cadence tightens while a safe route remains.
-- No time-based fail state; the run continues until three lives are lost.
+### Active salmon fishing
+The bear now hunts while standing on the riverbank rather than running down race lanes. Salmon swim downstream and leap into an in-range catch window; the player must deliberately press Catch/Space/E or tap the mobile Catch button. A missed fish is harmless. Current and fish pace rise smoothly with time and are capped.
 
-### Tree obstacles and three-life loop — complete
-- Exactly three lives at run start.
-- Fallen logs/tree hazards enter the river path.
-- Each collision costs exactly one life; the run continues with lives remaining.
-- A recovery window prevents repeated life loss from one contact.
-- Game over occurs only after the third life is exhausted; the results screen shows fish, score, distance/time and local best.
+### Forest river scene
+The previous simple straight-runner world is replaced with a layered 3D forest valley, river banks, rocks, ferns, distant ridges, water/foam motion and animated trees. Salmon, small wood blocks and algae share the same sampled river path and respond to its position, height, tangent and flow.
 
-### River, bear, fish-catching, and collision audio — implemented
-- Continuous rushing-water ambience.
-- Synthesized bear running/eating/hit/final vocal cues.
-- Catch splash/eating and score feedback.
-- Tree impact and life-loss cues; visual cues remain available and sound can be muted/adjusted.
+### Three lives and hazard accounting
+Runs start with three lives and have no timer-based ending. Two distinct small-block collisions remove one life and reset the visible 0/2 counter. One harmful-algae contact removes one life immediately. Each hazard is removed after contact so it cannot hit repeatedly; fish misses carry no penalty. Game over occurs at zero lives.
 
-### Browser-local progress and controls — complete
-- No login, sign-up, server, online leaderboard, analytics, or account data.
-- Settings and personal best are stored locally in this browser.
-- HUD/results show fish, score, distance/survival time, lives, and local personal best.
-- Keyboard and mobile touch steering; pause, settings, retry, responsive HUD.
-- English is pinned regardless of browser locale; no language selector or auto-switch.
+### Feedback, accessibility and local data
+A visible Catch button and catch-ready cue complement the keyboard control; touch includes bank movement and a large Catch action. The HUD displays fish, score, distance/current, three lives and the block-hit meter. The ambience is a quiet continuous synthesized river wash; distinct synthesized feedback is provided for catches/bear reactions, wood, algae and life loss. Settings and best-run records remain browser-local, with no account, login/signup, online leaderboard, analytics or server.
 
-### Verification — passed
-- TypeScript check and production build.
-- **34 unit tests passed**.
-- Playwright smoke passed: desktop steering, fish scoring, pause/settings, exactly three lives to game over, personal-best persistence, English-only behavior, and mobile HUD.
-- Local and public Preview HTTP checks returned 200, including `/favicon.png`.
+### Verification
+TypeScript check, 36 unit tests, production build/size check and desktop/mobile Playwright smoke test passed. The smoke test exercised bank movement, explicit timed catches, distinct wood collisions, immediate algae damage, three-life game over, local best and touch Catch.
 
-## Deferred: final 3D models
+## Still open / art polish
 
-The approved Hybrid choice requires catalog-first sourcing, followed by approved generation only for real catalog gaps. Current catalog access reports a project-binding error; this does not prove the catalog has no suitable models. No model generation was run. Bear, fish, and fallen logs currently use **temporary low-poly procedural stand-ins** and should not be represented as final art. Resume model sourcing when the supported project binding/runtime is available.
+### Final production 3D models
+The approved sourcing choice is Hybrid/catalog-first, but catalog retrieval is currently blocked because the project is unbound in the catalog. That error does not establish that the catalog is empty. The current bear, salmon and environment remain low-poly/procedural prototype stand-ins; final sourced models are pending. No new generated model assets were created.
 
-## Delivery status
-
-The live Preview is running for this session. No permanent checkpoint or public deployment was created; deployment was not requested, and the supported asset/checkpoint runtime path was unavailable. The Preview URL is temporary and may stop with this session.
+### Further visual refinement
+The redesigned world and active fishing loop are in place, but the stylized prototype may benefit from deeper production art: a more natural bear/salmon model, richer water material/foam, a closer cascade/riverbank composition and additional polish on the catch animation. The current change is an implementation-stage visual overhaul rather than final model production.

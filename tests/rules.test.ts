@@ -1,32 +1,34 @@
 import { describe, expect, it } from 'vitest'
 import { CONFIG } from '../src/game/config'
-import { collect, createRun, damage, fishInterval, obstacleInterval, riverSpeed, tick } from '../src/game/rules'
+import { collect, createRun, eatAlgae, fishInterval, hazardInterval, hitSmallBlock, riverSpeed, tick } from '../src/game/rules'
 
-describe('endless river run rules', () => {
+describe('river fishing rules', () => {
   it('starts with three lives and has no time-based ending', () => {
     let run = createRun()
     expect(run.lives).toBe(3)
-    expect(run.phase).toBe('playing')
+    expect(run.blockHits).toBe(0)
     run = tick(run, 360)
     expect(run.phase).toBe('playing')
   })
 
-  it('ramps the current and fish/hazard cadence fairly, then caps river speed', () => {
+  it('ramps the current and encounter pace smoothly, then caps current speed', () => {
     expect(riverSpeed(0)).toBe(CONFIG.run.startSpeed)
     expect(riverSpeed(30)).toBeGreaterThan(riverSpeed(0))
     expect(riverSpeed(10_000)).toBe(CONFIG.run.maxSpeed)
     expect(fishInterval(80)).toBeLessThan(fishInterval(0))
-    expect(obstacleInterval(80)).toBeLessThan(obstacleInterval(0))
+    expect(hazardInterval(80)).toBeLessThan(hazardInterval(0))
     expect(riverSpeed(10_000)).toBeLessThanOrEqual(CONFIG.run.maxSpeed)
   })
 
-  it('increases distance as the run advances', () => {
+  it('records distance on the river and holds a missed fish harmlessly', () => {
     const run = tick(createRun(), 2, 14)
     expect(run.elapsed).toBe(2)
     expect(run.distance).toBe(28)
+    expect(run.lives).toBe(3)
+    expect(run.collected).toBe(0)
   })
 
-  it('rewards every fish and decays the combo after its window', () => {
+  it('rewards deliberate catches and decays the combo after its window', () => {
     let run = createRun()
     let result = collect(run)
     expect(result.points).toBe(CONFIG.score.fish)
@@ -38,30 +40,48 @@ describe('endless river run rules', () => {
     expect(collect(run).points).toBe(CONFIG.score.fish)
   })
 
-  it('each tree hit costs one life, rejects repeat hits during recovery, and ends only at zero', () => {
+  it('deducts exactly one life after two separate wood hits, then resets the strike meter', () => {
     let run = createRun()
-    run = damage(run).state
+    const first = hitSmallBlock(run)
+    run = first.state
+    expect(first.strike).toBe(1)
+    expect(first.lifeLost).toBe(false)
+    expect(run.lives).toBe(3)
+    expect(run.blockHits).toBe(1)
+    const second = hitSmallBlock(run)
+    run = second.state
+    expect(second.lifeLost).toBe(true)
+    expect(second.strike).toBe(0)
     expect(run.lives).toBe(2)
-    expect(run.phase).toBe('playing')
-    expect(damage(run).hurt).toBe(false)
-    run = tick(run, CONFIG.run.recoverySeconds + 0.01)
-    run = damage(run).state
+    expect(run.blockHits).toBe(0)
+    run = hitSmallBlock(hitSmallBlock(run).state).state
     expect(run.lives).toBe(1)
-    expect(run.phase).toBe('playing')
-    run = tick(run, CONFIG.run.recoverySeconds + 0.01)
-    run = damage(run).state
+    run = hitSmallBlock(hitSmallBlock(run).state).state
     expect(run.lives).toBe(0)
     expect(run.phase).toBe('lost')
     expect(run.loseReason).toBe('lives')
   })
 
-  it('freezes scoring and run state after all lives are gone', () => {
+  it('deducts one life immediately for algae without counting a wood hit', () => {
+    let run = createRun()
+    run = hitSmallBlock(run).state
+    const result = eatAlgae(run)
+    expect(result.lifeLost).toBe(true)
+    expect(result.state.lives).toBe(2)
+    expect(result.state.blockHits).toBe(1)
+    expect(eatAlgae(result.state).state.lives).toBe(1)
+  })
+
+  it('freezes score and life state after the third life is gone', () => {
     let run = createRun()
     for (let i = 0; i < 3; i += 1) {
-      run = damage(run).state
-      if (run.phase === 'playing') run = tick(run, CONFIG.run.recoverySeconds + 0.01)
+      run = eatAlgae(run).state
+      run = hitSmallBlock(hitSmallBlock(run).state).state
     }
+    expect(run.phase).toBe('lost')
     expect(tick(run, 1)).toBe(run)
     expect(collect(run).points).toBe(0)
+    expect(eatAlgae(run).state).toBe(run)
+    expect(hitSmallBlock(run).state).toBe(run)
   })
 })

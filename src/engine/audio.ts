@@ -1,5 +1,5 @@
-/** Browser-safe Web Audio mixer. The river loop and short wildlife/gameplay cues are synthesized locally. */
-export type Sfx = 'pickup' | 'jump' | 'land' | 'hurt' | 'ui' | 'win' | 'lose' | 'dash' | 'eat' | 'bear-grunt' | 'bear-hit' | 'collision' | 'life-loss'
+/** Browser-safe Web Audio mixer. Wildlife and stream sounds are synthesized locally. */
+export type Sfx = 'pickup' | 'jump' | 'land' | 'hurt' | 'ui' | 'win' | 'lose' | 'dash' | 'eat' | 'bear-grunt' | 'bear-hit' | 'collision' | 'life-loss' | 'fish-catch' | 'bear-catch' | 'miss' | 'block-hit' | 'algae'
 
 export class Audio {
   readonly ctx: AudioContext
@@ -18,7 +18,6 @@ export class Audio {
     this.master = this.ctx.createGain()
     this.music = this.ctx.createGain()
     this.sfx = this.ctx.createGain()
-    // Each sender crosses its intended absolute base-gain stage exactly once.
     this.musicBase = this.ctx.createGain()
     this.sfxBase = this.ctx.createGain()
     this.musicBase.gain.value = 3
@@ -40,7 +39,6 @@ export class Audio {
     if (this.ctx.state === 'suspended') void this.ctx.resume()
   }
 
-  /** Saved sliders are 0..1; user mixes stay bounded and the master peak guard remains active. */
   setVolumes(music: number, sfx: number, muted = false): void {
     const t = this.ctx.currentTime
     const m = Math.max(0, Math.min(1, music))
@@ -67,7 +65,7 @@ export class Audio {
     return src
   }
 
-  /** Start one continuous rushing-water bed, only after a player gesture. */
+  /** Start a low, continuous stream bed only after a player gesture. */
   startRiver(): void {
     if (this.riverSource) { this.resumeRiver(); return }
     const length = Math.max(1, Math.floor(this.ctx.sampleRate * 3))
@@ -86,24 +84,21 @@ export class Audio {
     source.buffer = buffer
     source.loop = true
     low.type = 'lowpass'
-    low.frequency.value = 1200
+    low.frequency.value = 920
     high.type = 'highpass'
-    high.frequency.value = 75
+    high.frequency.value = 70
     gain.gain.value = 0.0001
     source.connect(high).connect(low).connect(gain).connect(this.music)
     source.start()
-    gain.gain.setTargetAtTime(0.2, this.ctx.currentTime, 0.7)
+    gain.gain.setTargetAtTime(0.075, this.ctx.currentTime, 0.7)
     this.riverSource = source
     this.riverGain = gain
   }
 
-  pauseRiver(): void {
-    this.riverGain?.gain.setTargetAtTime(0.0001, this.ctx.currentTime, 0.08)
-  }
-
+  pauseRiver(): void { this.riverGain?.gain.setTargetAtTime(0.0001, this.ctx.currentTime, 0.08) }
   resumeRiver(): void {
     if (!this.riverSource) { this.startRiver(); return }
-    this.riverGain?.gain.setTargetAtTime(0.2, this.ctx.currentTime, 0.3)
+    this.riverGain?.gain.setTargetAtTime(0.075, this.ctx.currentTime, 0.35)
   }
 
   stopRiver(): void {
@@ -174,8 +169,17 @@ export class Audio {
         tone(980, 1320, 0.16, 'sine', 0.16, 0.07)
         bear(150, 110, 0.12, 0.08)
         break
-      case 'bear-grunt': bear(130 + Math.random() * 20, 82, 0.34, 0.13); noise(0.16, 100, 680, 0.07); break
+      case 'fish-catch':
+        noise(0.2, 170, 1800, 0.13)
+        tone(520, 850, 0.14, 'triangle', 0.19)
+        tone(840, 1130, 0.17, 'sine', 0.14, 0.055)
+        break
+      case 'bear-catch': bear(142, 98, 0.25, 0.15); noise(0.12, 220, 760, 0.05); break
+      case 'miss': noise(0.12, 640, 2600, 0.06); tone(420, 310, 0.14, 'sine', 0.07); break
+      case 'bear-grunt': bear(130 + Math.random() * 20, 82, 0.34, 0.11); noise(0.16, 100, 680, 0.06); break
       case 'bear-hit': bear(185, 70, 0.43, 0.23); break
+      case 'block-hit': noise(0.18, 55, 620, 0.19); tone(135, 62, 0.18, 'triangle', 0.17); break
+      case 'algae': noise(0.21, 280, 1600, 0.12); tone(255, 74, 0.32, 'sawtooth', 0.16); break
       case 'collision':
       case 'hurt': noise(0.2, 45, 430, 0.24); tone(115, 42, 0.24, 'triangle', 0.24); break
       case 'life-loss': tone(760, 390, 0.24, 'triangle', 0.18); tone(390, 230, 0.3, 'sine', 0.12, 0.18); break

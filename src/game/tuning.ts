@@ -9,23 +9,23 @@ function number<S extends keyof typeof CONFIG>(section: S, key: keyof typeof CON
   label: string, min: number, max: number, step: number, unit: string, applyMode: ApplyMode = 'LIVE', integrity: 'COSMETIC' | 'GAMEPLAY' = 'GAMEPLAY'): void {
   const values = CONFIG[section] as Record<string, number>
   const defaults = DEFAULT_CONFIG[section] as Record<string, number>
-  bindings.push({ control: Object.freeze({ id: `${section}.${key}`, type: 'number', category: section === 'camera' ? 'Camera' : section === 'player' ? 'Steering' : 'River run',
+  bindings.push({ control: Object.freeze({ id: `${section}.${key}`, type: 'number', category: section === 'camera' ? 'Camera' : section === 'player' ? 'Bank-side fishing' : 'River encounter',
     label, description: applyMode === 'NEXT_RUN' ? 'Applies when a new run starts.' : 'Updates this preview immediately.', unit, default: defaults[key], min, max, step, applyMode, integrity }),
     read: () => values[key], write: value => { values[key] = value } })
 }
 
 number('run', 'lives', 'Starting lives', 1, 5, 1, 'lives', 'NEXT_RUN')
-number('run', 'startSpeed', 'Starting river speed', 8, 22, 0.5, 'm/s', 'NEXT_RUN')
-number('run', 'speedRamp', 'Speed increase', 0.03, 0.3, 0.01, 'm/s/s', 'NEXT_RUN')
-number('run', 'maxSpeed', 'River speed cap', 18, 42, 1, 'm/s', 'NEXT_RUN')
-number('run', 'fishInterval', 'Initial fish interval', 0.8, 3, 0.05, 's', 'NEXT_RUN')
-number('run', 'obstacleInterval', 'Initial log interval', 1.5, 5, 0.1, 's', 'NEXT_RUN')
-number('run', 'recoverySeconds', 'Hit recovery', 0.6, 2.5, 0.05, 's', 'NEXT_RUN')
-number('player', 'maxX', 'River lane boundary', 2.5, 4.5, 0.1, 'm', 'LIVE')
-number('player', 'moveSpeed', 'Steering response', 5, 18, 0.5, 'm/s', 'LIVE')
-number('camera', 'fov', 'Field of view', 48, 80, 1, '°', 'LIVE', 'COSMETIC')
-number('camera', 'follow', 'Camera follow speed', 2, 14, 0.5, '', 'LIVE', 'COSMETIC')
-number('camera', 'height', 'Camera height', 4.5, 8, 0.1, 'm', 'LIVE', 'COSMETIC')
+number('run', 'startSpeed', 'Starting current speed', 4, 12, 0.5, 'm/s', 'NEXT_RUN')
+number('run', 'speedRamp', 'Current speed increase', 0.01, 0.08, 0.005, 'm/s/s', 'NEXT_RUN')
+number('run', 'maxSpeed', 'Current speed cap', 8, 20, 0.5, 'm/s', 'NEXT_RUN')
+number('run', 'fishInterval', 'Initial fish arrival interval', 1, 4, 0.1, 's', 'NEXT_RUN')
+number('run', 'hazardInterval', 'Initial hazard arrival interval', 2, 7, 0.1, 's', 'NEXT_RUN')
+number('player', 'moveSpeed', 'Bank walking response', 2, 8, 0.25, 'm/s', 'LIVE')
+number('player', 'catchRangeX', 'Catch reach across the water', 2.5, 5.5, 0.1, 'm', 'LIVE')
+number('player', 'catchRangeZ', 'Catch timing window', 1.5, 4, 0.1, 'm', 'LIVE')
+number('camera', 'fov', 'Field of view', 46, 76, 1, '°', 'LIVE', 'COSMETIC')
+number('camera', 'follow', 'Camera ease', 2, 10, 0.25, '', 'LIVE', 'COSMETIC')
+number('camera', 'height', 'Camera height', 5, 11, 0.25, 'm', 'LIVE', 'COSMETIC')
 
 const byId = new Map(bindings.map(b => [b.control.id, b]))
 let requested = Object.fromEntries(bindings.map(b => [b.control.id, b.control.default]))
@@ -33,7 +33,7 @@ let unranked = false
 const isGameplayChanged = () => bindings.some(b => b.control.integrity === 'GAMEPLAY' && b.read() !== b.control.default)
 const valid = (v: Record<string, number>) => v['run.maxSpeed'] >= v['run.startSpeed']
   && v['run.fishInterval'] >= CONFIG.run.fishIntervalFloor
-  && v['run.obstacleInterval'] >= CONFIG.run.obstacleIntervalFloor
+  && v['run.hazardInterval'] >= CONFIG.run.hazardIntervalFloor
 
 export const tuning = {
   get unranked(): boolean { return unranked },
@@ -52,7 +52,7 @@ export const tuning = {
     const candidate = { ...requested, ...patch } as Record<string, number>
     const active = this.read().active
     for (const [id, value] of entries) if (byId.get(id)!.control.applyMode === 'LIVE') active[id] = value
-    if (!valid(candidate) || !valid(active)) throw new Error('River speed cap must not be lower than starting speed')
+    if (!valid(candidate) || !valid(active)) throw new Error('Current speed cap must not be lower than starting speed')
     requested = candidate
     for (const [id, value] of entries) {
       const binding = byId.get(id)!

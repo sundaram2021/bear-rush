@@ -1,9 +1,6 @@
-import type { Input } from '../engine/input'
+import type { Action, Input } from '../engine/input'
 
-/**
- * On-screen touch controls: a floating stick on the left half, drag-to-look on the right half,
- * and JUMP / DASH buttons. Enabled automatically on the first touch.
- */
+/** Virtual riverbank stick and one dedicated Catch button; both feed the shared input layer. */
 export class TouchControls {
   private stickId: number | null = null
   private lookId: number | null = null
@@ -21,10 +18,7 @@ export class TouchControls {
     const enable = () => document.body.classList.add('has-touch')
     if (matchMedia('(pointer: coarse)').matches) enable()
     window.addEventListener('touchstart', enable, { once: true, passive: true })
-    // Any touch switches hints/prompts to touch, even taps on menu buttons.
-    window.addEventListener('pointerdown', e => {
-      if (e.pointerType === 'touch') this.input.method = 'touch'
-    }, { capture: true })
+    window.addEventListener('pointerdown', e => { if (e.pointerType === 'touch') this.input.method = 'touch' }, { capture: true })
 
     const canvas = document.querySelector<HTMLCanvasElement>('#game')!
     canvas.addEventListener('pointerdown', e => {
@@ -45,10 +39,7 @@ export class TouchControls {
         let dx = e.clientX - this.origin.x
         let dy = e.clientY - this.origin.y
         const len = Math.hypot(dx, dy)
-        if (len > radius) {
-          dx = (dx / len) * radius
-          dy = (dy / len) * radius
-        }
+        if (len > radius) { dx = (dx / len) * radius; dy = (dy / len) * radius }
         this.knob.style.transform = `translate(${dx}px, ${dy}px)`
         this.input.setTouchMove(dx / radius, -dy / radius)
       } else if (e.pointerId === this.lookId) {
@@ -69,7 +60,7 @@ export class TouchControls {
     window.addEventListener('pointercancel', end)
 
     for (const btn of layer.querySelectorAll<HTMLElement>('[data-touch]')) {
-      const action = btn.dataset.touch as 'jump' | 'dash'
+      const action = btn.dataset.touch as Action
       btn.addEventListener('pointerdown', e => {
         e.preventDefault()
         btn.setPointerCapture(e.pointerId)

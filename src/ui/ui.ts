@@ -65,6 +65,7 @@ export class Ui {
     this.set('distance', `${Math.floor(run.distance)} m`)
     this.set('time', `${Math.floor(run.elapsed)} s`)
     this.set('speed', `${Math.round(speed)} m/s`)
+    this.set('wood', `${run.blockHits}/2`)
     for (const [i, life] of [...this.root.querySelectorAll<HTMLElement>('.life')].entries()) {
       life.classList.toggle('is-empty', i >= run.lives)
     }
@@ -93,6 +94,14 @@ export class Ui {
     const el = this.root.querySelector<HTMLElement>('.tutorial-hint')!
     el.textContent = hint ? this.i18n.t(`hint.${hint}`) : ''
     el.classList.toggle('is-visible', !!hint)
+  }
+
+  catchReady(ready: boolean): void {
+    const button = this.root.querySelector<HTMLButtonElement>('.catch-button')
+    if (!button) return
+    button.classList.toggle('is-ready', ready)
+    button.setAttribute('aria-pressed', String(ready))
+    button.setAttribute('aria-label', this.i18n.t(ready ? 'controls.catchReady' : 'controls.catch'))
   }
 
   showResults(run: RunState): void {
@@ -182,6 +191,7 @@ export class Ui {
       case 'settings': this.push('settings'); break
       case 'back': this.back(); break
       case 'pause': window.dispatchEvent(new CustomEvent('game:pause')); break
+      case 'catch': if (this.input.method !== 'touch') this.input.press('catch'); break
     }
   }
 
@@ -241,7 +251,7 @@ export class Ui {
     <div class="eyebrow" data-i18n="game.eyebrow"></div>
     <div class="logo"><span class="logo-mark" aria-hidden="true">🐾</span><h1 class="logo-text" data-i18n="game.title"></h1></div>
     <p class="tagline" data-i18n="game.tagline"></p>
-    <div class="controls-card"><b data-i18n="controls.title"></b><span data-i18n="controls.desktop"></span><span data-i18n="controls.touch"></span><span data-i18n="controls.goal"></span></div>
+    <div class="controls-card"><b data-i18n="controls.title"></b><span data-i18n="controls.desktop"></span><span data-i18n="controls.touch"></span><span data-i18n="controls.goal"></span><span data-i18n="controls.hazards"></span></div>
     <nav class="menu"><button data-nav class="btn btn-primary" data-action="play"><span data-i18n="menu.play"></span></button><button data-nav class="btn" data-action="settings"><span data-i18n="menu.settings"></span></button></nav>
     <p class="privacy-note" data-i18n="settings.privacy"></p>
   </div>
@@ -249,10 +259,10 @@ export class Ui {
 </section>
 <section class="screen screen-hud" data-screen="hud">
   <div class="hurt-vignette"></div><div class="popups"></div>
-  <div class="hud-left"><div class="hud-chip"><span data-i18n="hud.fish"></span><b data-slot="fish">0</b></div><div class="hud-chip"><span data-i18n="hud.score"></span><b data-slot="score">0</b></div></div>
+  <div class="hud-left"><div class="hud-chip"><span data-i18n="hud.fish"></span><b data-slot="fish">0</b></div><div class="hud-chip"><span data-i18n="hud.score"></span><b data-slot="score">0</b></div><div class="hud-chip hud-wood"><span data-i18n="hud.wood"></span><b data-slot="wood">0/2</b></div></div>
   <div class="hud-center"><div class="hud-distance"><span data-i18n="hud.distance"></span><b data-slot="distance">0 m</b></div><div class="hud-meta"><span data-slot="time">0 s</span><span>·</span><span data-i18n="hud.speed"></span><b data-slot="speed">14 m/s</b></div></div>
   <div class="hud-right"><div class="lives" aria-label="Lives"><span class="life">♥</span><span class="life">♥</span><span class="life">♥</span></div><button class="hud-pause" data-action="pause" data-i18n-label="hud.pause" aria-label="Pause">Ⅱ</button></div>
-  <div class="tutorial-hint"></div><div class="touch"><div class="touch-stick"><i></i></div></div>
+  <div class="tutorial-hint"></div><button class="catch-button" data-action="catch" data-touch="catch" data-i18n-label="controls.catch" aria-label="Catch salmon"><span data-i18n="controls.catchButton"></span></button><div class="touch"><div class="touch-stick"><i></i></div></div>
 </section>
 <section class="screen screen-modal" data-screen="pause"><div class="modal"><div class="eyebrow" data-i18n="game.eyebrow"></div><h2 class="modal-title" data-i18n="pause.title"></h2><p data-i18n="pause.message"></p><nav class="menu"><button data-nav class="btn btn-primary" data-action="resume"><span data-i18n="menu.resume"></span></button><button data-nav class="btn" data-action="restart"><span data-i18n="menu.retry"></span></button><button data-nav class="btn" data-action="settings"><span data-i18n="menu.settings"></span></button><button data-nav class="btn" data-action="quit"><span data-i18n="menu.title"></span></button></nav></div></section>
 <section class="screen screen-modal" data-screen="settings"><div class="modal modal-settings"><div class="eyebrow" data-i18n="game.eyebrow"></div><h2 class="modal-title" data-i18n="settings.title"></h2><fieldset><legend data-i18n="settings.audio"></legend>${range('musicVolume', 'settings.water')}${range('sfxVolume', 'settings.effects')}${toggle('muted', 'settings.mute')}</fieldset><fieldset><legend data-i18n="settings.display"></legend><div class="setting-row"><span data-i18n="settings.quality"></span><div class="seg" data-setting="quality"><button data-nav data-value="low" data-i18n="settings.quality.low"></button><button data-nav data-value="medium" data-i18n="settings.quality.medium"></button><button data-nav data-value="high" data-i18n="settings.quality.high"></button></div></div>${toggle('reducedMotion', 'settings.reducedMotion')}</fieldset><p class="privacy-note" data-i18n="settings.privacy"></p><nav class="menu menu-row"><button data-nav class="btn" data-action="back"><span data-i18n="menu.back"></span></button></nav></div></section>

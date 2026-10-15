@@ -5,6 +5,7 @@ import { Input } from './engine/input'
 import { GameLoop } from './engine/loop'
 import { SAVE_KEY, SaveStore, type SaveData } from './engine/save'
 import type { Game } from './game/game'
+import * as rules from './game/rules'
 import { TouchControls } from './ui/touch'
 import { Ui } from './ui/ui'
 
@@ -73,10 +74,11 @@ async function boot(): Promise<void> {
 
   const renderer = new Renderer(canvas, save.data.quality)
   game = new Game(renderer, input, audio, {
-    popup: (text, at, kind) => ui.popup(text, at, kind),
-    hurt: () => ui.hurt(),
-    hint: hint => ui.hint(hint),
-    tutorialDone: () => save.update({ tutorialDone: true }),
+      popup: (text, at, kind) => ui.popup(text, at, kind),
+      hurt: () => ui.hurt(),
+      hint: hint => ui.hint(hint),
+      catchReady: ready => ui.catchReady(ready),
+      tutorialDone: () => save.update({ tutorialDone: true }),
     end: run => window.setTimeout(() => ui.showResults(run), 800),
   })
   game.reducedMotion = save.data.reducedMotion
@@ -100,6 +102,7 @@ async function boot(): Promise<void> {
       loop.paused = g.mode === 'paused'
       g.render(alpha, frameSeconds)
       if (g.mode === 'playing' || g.mode === 'ended') ui.updateHud(g.run, g.speed)
+      input.endFrame()
     },
   })
   loop.start()
@@ -109,7 +112,7 @@ async function boot(): Promise<void> {
   new TouchControls(document.getElementById('ui')!, input, () => g.mode === 'playing')
   window.setTimeout(() => ui.show('title'), 250)
   // Debug/test hook: smoke tests inspect the actual run and saved local record through it.
-  ;(window as unknown as { __game: unknown }).__game = { game: g, ui, input, save }
+  ;(window as unknown as { __game: unknown }).__game = { game: g, ui, input, save, rules }
 }
 
 function safeGet(key: string): string | null {
