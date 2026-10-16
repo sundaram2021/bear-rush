@@ -15,7 +15,7 @@ describe('wildlife tracking and pursuit', () => {
     expect(field.count).toBe(0)
   })
 
-  it('spawns all six food species as trackable leads in the first local area', () => {
+  it('spawns all eight food species as trackable leads in the first local area', () => {
     const terrain = new Terrain()
     const field = new FoodField()
     const bear = new THREE.Vector3(-5, terrain.heightAt(-5, 5), 5)
@@ -153,5 +153,70 @@ describe('wildlife tracking and pursuit', () => {
     const far = new THREE.Vector3(CONFIG.hunt.trackingRadius + 22, terrain.heightAt(CONFIG.hunt.trackingRadius + 22, 0), 0)
     for (let i = 0; i < CONFIG.hunt.trackLifetime * 10 + 1; i += 1) field.step(0.1, far, terrain)
     expect(field.tracks(far)).toHaveLength(0)
+  })
+
+  it('makes a rabbit pause and flee straighter at range while a coyote sustains a longer pursuit', () => {
+    const terrain = new Terrain()
+    const bear = new THREE.Vector3(0, terrain.heightAt(0, 20), 20)
+    const forward = new THREE.Vector3(0, 0, -1)
+    const rabbit = new FoodField()
+    const coyote = new FoodField()
+    rabbit.spawn('rabbit', new THREE.Vector3(0, terrain.heightAt(0, 0), 0), terrain)
+    coyote.spawn('coyote', new THREE.Vector3(0, terrain.heightAt(0, 0), 0), terrain)
+    const rabbitActor = (rabbit as unknown as { actors: Array<{ state: string; stamina: number }> }).actors[0]
+    const coyoteActor = (coyote as unknown as { actors: Array<{ state: string; stamina: number }> }).actors[0]
+    rabbitActor.state = 'fleeing'
+    coyoteActor.state = 'fleeing'
+    for (let i = 0; i < 20; i += 1) {
+      const rabbitPrey = rabbit.group.children[0]!
+      const coyotePrey = coyote.group.children[0]!
+      bear.set(rabbitPrey.position.x, terrain.heightAt(rabbitPrey.position.x, rabbitPrey.position.z + 14), rabbitPrey.position.z + 14)
+      rabbit.step(0.1, bear, terrain, new THREE.Vector3(), 7, false, forward)
+      bear.set(coyotePrey.position.x, terrain.heightAt(coyotePrey.position.x, coyotePrey.position.z + 14), coyotePrey.position.z + 14)
+      coyote.step(0.1, bear, terrain, new THREE.Vector3(), 7, false, forward)
+    }
+    expect(rabbitActor.stamina).toBeLessThan(coyoteActor.stamina)
+    expect(CONFIG.hunt.chaseDuration.rabbit).toBeLessThan(CONFIG.hunt.chaseDuration.coyote)
+    expect(CONFIG.hunt.evasion.rabbit).toBeGreaterThan(CONFIG.hunt.evasion.coyote)
+  })
+
+  it('keeps a hare’s distant escape line straighter than its close-range evasion', () => {
+    const terrain = new Terrain()
+    const flight = (bearZ: number) => {
+      const field = new FoodField()
+      field.spawn('rabbit', new THREE.Vector3(0, terrain.heightAt(0, 0), 0), terrain)
+      const actor = (field as unknown as { actors: Array<{ state: string; velocity: THREE.Vector3 }> }).actors[0]!
+      actor.state = 'fleeing'
+      field.step(0.1, new THREE.Vector3(0, terrain.heightAt(0, bearZ), bearZ), terrain, new THREE.Vector3(), 7, false, new THREE.Vector3(0, 0, -1))
+      return Math.abs(actor.velocity.x)
+    }
+    expect(flight(30)).toBeLessThan(flight(6))
+  })
+
+  it('lets the bear make a distinct close, slow strike on a salmon in the river', () => {
+    const terrain = new Terrain()
+    const field = new FoodField()
+    const fishZ = 10
+    const fishX = terrain.riverX(fishZ)
+    field.spawn('salmon', new THREE.Vector3(fishX, terrain.waterY(fishZ) + 0.23, fishZ), terrain)
+    const bearZ = 11
+    const bear = new THREE.Vector3(terrain.riverX(bearZ), terrain.heightAt(terrain.riverX(bearZ), bearZ), bearZ)
+    field.step(0.1, bear, terrain)
+    const forward = new THREE.Vector3(0, 0, -1)
+    expect(field.collectNearby(bear, true, forward, 4)?.kind).toBeUndefined()
+    expect(field.collectNearby(bear, false, forward, 1, bear, true)?.kind).toBe('salmon')
+    expect(field.count).toBe(0)
+  })
+
+  it('moves salmon against the modeled current until the bear approaches', () => {
+    const terrain = new Terrain()
+    const field = new FoodField()
+    const fishZ = 10
+    const fishX = terrain.riverX(fishZ)
+    field.spawn('salmon', new THREE.Vector3(fishX, terrain.waterY(fishZ) + 0.23, fishZ), terrain)
+    const bear = new THREE.Vector3(fishX, terrain.heightAt(fishX, 35), 35)
+    field.step(1, bear, terrain)
+    const actor = (field as unknown as { actors: Array<{ swimZ: number }> }).actors[0]
+    expect(actor.swimZ).toBeLessThan(fishZ)
   })
 })

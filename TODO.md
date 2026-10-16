@@ -1,22 +1,16 @@
-# Bear Rush — health and hunt reliability update
+# Bear Rush — expanded wildlife and river hazards
 
-## Requested gameplay outcomes
+## User-requested outcomes
 
-- [x] Remove the extra-life/heart model. Runs begin at 100% health; poisonous food, bear traps and trench falls reduce the single health pool; reaching 0% ends the hunt without resetting health or continuing with spare lives.
-- [x] Ensure salmon, honey, fawn, deer, elk and moose are all seeded as local leads on a new run. Rotate the six species through later spawn opportunities.
-- [x] Preserve stalk, wind/noise awareness, species-specific stamina and pursuit. Allow an exhausted animal to be caught by a committed close pounce, including a pounce that sweeps across it between frames; reject an early or misaligned pounce.
-- [x] Show the hunt-ready cue for nearby exhausted prey and play a brief bear capture reaction only after a successful takedown.
-- [x] Keep the endless world, minimap, local-only saves and exactly three damage sources.
-- [x] Passed `pnpm typecheck`, `pnpm test` (58 tests), `pnpm build`, and `pnpm smoke` (desktop/mobile), reviewed the diff, and pushed the update to the existing PR #3.
+- [x] Add rabbits and coyotes as visible, trackable, scoreable hunt targets alongside the existing deer and moose; retain the other current food species and local-only game behavior.
+- [x] Research deer, moose, rabbit/hare, coyote, and salmon behavior; implement distinct awareness, escape movement, close-pursuit endurance, fatigue window, and final catch action for each. Set practical game chase timing from that research, clearly distinguishing game compression from real biological chase durations.
+- [x] Allow the bear to enter and leave the river. Make salmon catches available in the river through a deliberate fishing action that differs from a land-animal pounce.
+- [x] Add large visible wood pieces flowing downstream. A collision while the bear is in the river must reduce the percentage health; wood must not damage the bear on land. Ensure logs keep appearing during infinite-world travel and do not grow resources without bound.
+- [x] Preserve existing percentage health and the land-only poison-food, bear-trap, and cliff/trench-fall damage. At 0%, the game ends. Preserve wind/noise stalking, the minimap, streaming world, browser-local saving, and desktop/mobile controls.
+- [x] Keep assets bundled locally. Do not purchase assets or generate AI models for this pass.
 
-## Visual quality still below the requested bar
+## Evidence and verification
 
-- [ ] Replace the procedural bear, fawn, deer, elk, moose and salmon with suitable locally bundled photorealistic models and validated animations. Current wildlife meshes are procedural and are not photorealistic.
-- [ ] Replace procedural close forest/rock dressing with optimized scanned assets while preserving streamed infinite-world performance. Existing CC0 fir-tree packages are too large to ship unoptimized.
-- [ ] Add model loading, animation mapping, scale/orientation validation, GPU-resource disposal, and explicit load-failure handling when suitable assets are legitimately available.
-
-## Source and delivery constraints
-
-- PR #2 is merged. PR #3 remains open on `feat/photorealistic-wildlife-hunt`; commit only these changes to that PR.
-- Do not purchase assets or generate AI models in this pass. Use only verified freely redistributable assets if any are integrated later, retaining author/source/license/attribution records.
-- `docs/art-sourcing.md` documents candidate availability, licensing and technical fit. `docs/hunting-behavior.md` cites the behavioral sources and distinguishes compressed game timing from biological reality.
+- [x] Save source-backed behavior notes for each target, include citations and note the rare/non-routine bear-coyote interaction if supported by evidence.
+- [x] Add tests for new species and hunting differences, in-river fish strikes, bear wading, downstream driftwood, swept water collision and river-only log damage; retain tests for the three existing land hazards.
+- [x] Pass typecheck, unit tests, production build, desktop/mobile browser smoke, and diff checks. Create and push a new PR from the merged `main` branch, without altering merged PR #3. [PR #4](https://github.com/sundaram2021/bear-rush/pull/4) is open on `feat/river-rabbit-coyote-hunts` against `main`.

@@ -57,54 +57,97 @@ export function createBear(): AnimalRig {
   return { root, body, head, legs }
 }
 
-export function createPrey(kind: Extract<FoodKind, 'fawn' | 'deer' | 'elk' | 'moose'>): AnimalRig {
+export function createPrey(kind: Extract<FoodKind, 'rabbit' | 'coyote' | 'fawn' | 'deer' | 'elk' | 'moose'>): AnimalRig {
   const root = new THREE.Group()
   const body = new THREE.Group()
   const head = new THREE.Group()
   root.add(body)
   body.add(head)
+  const isRabbit = kind === 'rabbit'
+  const isCoyote = kind === 'coyote'
   const isMoose = kind === 'moose'
   const isElk = kind === 'elk'
   const isFawn = kind === 'fawn'
-  const coat = furMaterial(isMoose ? '#765a42' : isElk ? '#9b7555' : isFawn ? '#bd8c5d' : '#a47b58')
+  const coat = furMaterial(isRabbit ? '#9f876e' : isCoyote ? '#82796d' : isMoose ? '#765a42' : isElk ? '#9b7555' : isFawn ? '#bd8c5d' : '#a47b58')
   const underside = isFawn ? paleFur : darkFur
-  const scale = isFawn ? 0.58 : isMoose ? 1.32 : isElk ? 1.08 : 0.86
+  const scale = isRabbit ? 0.42 : isCoyote ? 0.72 : isFawn ? 0.58 : isMoose ? 1.32 : isElk ? 1.08 : 0.86
   body.scale.setScalar(scale)
-  ellipsoid(body, coat, [0, 1.04, 0.18], [0.51, 0.5, 0.95])
-  ellipsoid(body, underside, [0, 0.8, 0.19], [0.38, 0.27, 0.72])
-  const neckLength = isMoose ? 0.64 : 0.43
-  ellipsoid(head, coat, [0, 1.37, -0.57], [isMoose ? 0.32 : 0.25, 0.52, neckLength])
-  ellipsoid(head, coat, [0, 1.76, -0.91], [isMoose ? 0.3 : 0.23, 0.31, 0.39])
-  ellipsoid(head, underside, [0, 1.63, -1.2], [isMoose ? 0.23 : 0.17, 0.17, 0.3])
-  for (const side of [-1, 1]) ellipsoid(head, eyeMat, [side * 0.17, 1.8, -1.17], [0.055, 0.06, 0.045])
-  for (const side of [-1, 1]) {
-    ellipsoid(head, coat, [side * 0.25, 1.83, -0.93], [0.1, 0.08, 0.22])
-    if (isFawn) {
-      for (let spot = 0; spot < 7; spot += 1) {
-        ellipsoid(body, paleFur, [((spot % 3) - 1) * 0.19, 1.32 + Math.floor(spot / 3) * 0.12, 0.02 + (spot % 2) * 0.26], [0.035, 0.045, 0.045])
+  const tail = new THREE.Group()
+  body.add(tail)
+  if (isRabbit) {
+    ellipsoid(body, coat, [0, 0.7, 0.18], [0.48, 0.39, 0.68])
+    ellipsoid(body, underside, [0, 0.57, 0.17], [0.36, 0.2, 0.47])
+    ellipsoid(head, coat, [0, 0.96, -0.38], [0.36, 0.32, 0.4])
+    ellipsoid(head, paleFur, [0, 0.84, -0.68], [0.21, 0.15, 0.19])
+    ellipsoid(head, muzzleMat, [0, 0.86, -0.82], [0.075, 0.055, 0.06])
+    for (const side of [-1, 1]) {
+      ellipsoid(head, eyeMat, [side * 0.27, 1.02, -0.62], [0.045, 0.05, 0.04])
+      const ear = ellipsoid(head, coat, [side * 0.14, 1.42, -0.36], [0.085, 0.35, 0.095])
+      ear.rotation.z = -side * 0.12
+      ellipsoid(head, paleFur, [side * 0.14, 1.43, -0.29], [0.042, 0.26, 0.052])
+    }
+    tail.position.set(0, 0.69, 0.8)
+    ellipsoid(tail, paleFur, [0, 0, 0], [0.17, 0.16, 0.16])
+  } else if (isCoyote) {
+    ellipsoid(body, coat, [0, 0.93, 0.18], [0.46, 0.46, 0.99])
+    ellipsoid(body, darkFur, [0, 0.69, 0.2], [0.34, 0.19, 0.7])
+    ellipsoid(head, coat, [0, 1.3, -0.54], [0.24, 0.34, 0.42])
+    ellipsoid(head, coat, [0, 1.42, -0.86], [0.22, 0.23, 0.32])
+    ellipsoid(head, darkFur, [0, 1.32, -1.13], [0.13, 0.14, 0.34])
+    ellipsoid(head, muzzleMat, [0, 1.34, -1.4], [0.09, 0.07, 0.12])
+    for (const side of [-1, 1]) {
+      ellipsoid(head, eyeMat, [side * 0.17, 1.46, -1.04], [0.045, 0.05, 0.04])
+      const ear = new THREE.Mesh(new THREE.ConeGeometry(0.105, 0.48, 12), coat)
+      ear.position.set(side * 0.17, 1.79, -0.63)
+      ear.rotation.z = -side * 0.2
+      ear.castShadow = true
+      head.add(ear)
+    }
+    tail.position.set(0, 0.73, 1.0)
+    const plume = ellipsoid(tail, coat, [0, 0, 0.22], [0.17, 0.17, 0.52])
+    plume.rotation.x = -0.2
+    ellipsoid(tail, darkFur, [0, 0.04, 0.63], [0.13, 0.13, 0.16])
+  } else {
+    ellipsoid(body, coat, [0, 1.04, 0.18], [isMoose ? 0.56 : 0.51, 0.5, isCoyote ? 0.8 : 0.95])
+    ellipsoid(body, underside, [0, 0.8, 0.19], [0.38, 0.27, 0.72])
+    const neckLength = isMoose ? 0.64 : 0.43
+    ellipsoid(head, coat, [0, 1.37, -0.57], [isMoose ? 0.32 : 0.25, 0.52, neckLength])
+    ellipsoid(head, coat, [0, 1.76, -0.91], [isMoose ? 0.3 : 0.23, 0.31, 0.39])
+    ellipsoid(head, underside, [0, 1.63, -1.2], [isMoose ? 0.23 : 0.17, 0.17, 0.3])
+    for (const side of [-1, 1]) ellipsoid(head, eyeMat, [side * 0.17, 1.8, -1.17], [0.055, 0.06, 0.045])
+    for (const side of [-1, 1]) {
+      ellipsoid(head, coat, [side * 0.25, 1.83, -0.93], [0.1, 0.08, 0.22])
+      if (isFawn) {
+        for (let spot = 0; spot < 7; spot += 1) {
+          ellipsoid(body, paleFur, [((spot % 3) - 1) * 0.19, 1.32 + Math.floor(spot / 3) * 0.12, 0.02 + (spot % 2) * 0.26], [0.035, 0.045, 0.045])
+        }
       }
     }
+    if (!isFawn) addAntlers(head, isMoose ? 1.15 : isElk ? 0.91 : 0.65, isMoose)
+    if (kind === 'moose') {
+      const dewlap = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.39, 12), darkFur)
+      dewlap.position.set(0, 1.2, -0.82)
+      head.add(dewlap)
+    }
   }
-  if (!isFawn) addAntlers(head, isMoose ? 1.15 : isElk ? 0.91 : 0.65, isMoose)
   const legs: THREE.Group[] = []
-  for (const [x, z] of [[-0.32, -0.53], [0.32, -0.53], [-0.32, 0.72], [0.32, 0.72]]) {
+  const legLength = isRabbit ? 0.33 : isCoyote ? 0.72 : isMoose ? 0.69 : isElk ? 0.62 : 0.55
+  const legAnchors: Array<[number, number]> = isRabbit
+    ? [[-0.26, -0.32], [0.26, -0.32], [-0.3, 0.49], [0.3, 0.49]]
+    : [[-0.32, -0.53], [0.32, -0.53], [-0.32, 0.72], [0.32, 0.72]]
+  for (const [x, z] of legAnchors) {
     const leg = new THREE.Group()
-    leg.position.set(x, 0.72, z)
-    const length = isMoose ? 0.69 : isElk ? 0.62 : 0.55
-    const upper = new THREE.Mesh(new THREE.CapsuleGeometry(0.095, length * 0.56, 6, 10), coat)
-    upper.position.y = -length * 0.35
+    leg.position.set(x, isRabbit ? 0.58 : 0.72, z)
+    const upper = new THREE.Mesh(new THREE.CapsuleGeometry(isRabbit ? 0.085 : 0.095, legLength * 0.56, 6, 10), coat)
+    upper.position.y = -legLength * 0.35
     upper.castShadow = true
     leg.add(upper)
-    ellipsoid(leg, hoofMat, [0, -length * 0.83, -0.04], [0.105, 0.09, 0.14])
+    if (isRabbit) ellipsoid(leg, coat, [0, -legLength * 0.67, -0.06], [0.12, 0.12, 0.2])
+    else ellipsoid(leg, hoofMat, [0, -legLength * 0.83, -0.04], [0.105, 0.09, 0.14])
     body.add(leg)
     legs.push(leg)
   }
-  if (kind === 'moose') {
-    const dewlap = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.39, 12), darkFur)
-    dewlap.position.set(0, 1.2, -0.82)
-    head.add(dewlap)
-  }
-  return { root, body, head, legs }
+  return { root, body, head, legs, tail }
 }
 
 function addAntlers(head: THREE.Group, spread: number, palmated: boolean): void {

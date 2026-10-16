@@ -6,7 +6,7 @@ import type { Terrain } from './terrain'
 
 export type FoodContact = { kind: FoodKind; position: THREE.Vector3 }
 export type WildlifeTrack = { id: number; kind: FoodKind; x: number; z: number; age: number; state: 'fresh' | 'fading'; confidence: number }
-type PreyKind = Extract<FoodKind, 'fawn' | 'deer' | 'elk' | 'moose'>
+type PreyKind = Extract<FoodKind, 'rabbit' | 'coyote' | 'fawn' | 'deer' | 'elk' | 'moose'>
 type PreyState = 'roaming' | 'alert' | 'fleeing' | 'exhausted'
 type FoodActor = {
   id: number
@@ -27,9 +27,9 @@ type FoodActor = {
   lastKnown?: THREE.Vector3
 }
 
-const isPrey = (kind: FoodKind): kind is PreyKind => kind === 'fawn' || kind === 'deer' || kind === 'elk' || kind === 'moose'
+const isPrey = (kind: FoodKind): kind is PreyKind => kind !== 'salmon' && kind !== 'honey'
 
-/** Sparse wildlife field with local, aging tracks and stamina-gated predator/prey encounters. */
+/** Sparse wildlife field with aging tracks and distinct, stamina-gated hunt styles. */
 export class FoodField {
   readonly group = new THREE.Group()
   private actors: FoodActor[] = []
@@ -50,41 +50,42 @@ export class FoodField {
     this.group.add(root)
     this.actors.push({
       id: this.nextId++, kind, root, rig, velocity: new THREE.Vector3(), phase: this.random() * Math.PI * 2,
-      swimZ: point.z, age: 0, state: 'roaming', stamina: 1, alertTimer: 0.65,
+      swimZ: point.z, age: 0, state: 'roaming', stamina: 1, alertTimer: 0.5,
       exhaustedTimer: 0, missedTimer: 0, trackAge: Number.POSITIVE_INFINITY, trackRefresh: 0,
     })
   }
 
-  /** Seed the local map with every food species, spread through a forward viewing fan. */
+  /** Put every food/hunt type on the first local map instead of waiting on a spawn lottery. */
   spawnInitial(bear: THREE.Vector3, terrain: Terrain): void {
     this.reset()
-    this.spawnAround('salmon', bear, terrain)
-    this.spawnAround('honey', bear, terrain)
-    const species: PreyKind[] = ['fawn', 'deer', 'elk', 'moose']
+    if (!this.spawnAround('salmon', bear, terrain)) this.spawnFallback('salmon', bear, terrain, 52)
+    if (!this.spawnAround('honey', bear, terrain, -Math.PI / 2, 0.82)) this.spawnFallback('honey', bear, terrain, 54)
+    const species: PreyKind[] = ['rabbit', 'coyote', 'fawn', 'deer', 'elk', 'moose']
     const center = -Math.PI / 2
     species.forEach((kind, index) => {
       const spread = (index / (species.length - 1) * 2 - 1) * CONFIG.hunt.initialPreyFanHalfAngle
-      this.spawnAround(kind, bear, terrain, center + spread, CONFIG.hunt.initialPreyRadiusScale)
+      if (!this.spawnAround(kind, bear, terrain, center + spread, CONFIG.hunt.initialPreyRadiusScale)) {
+        this.spawnFallback(kind, bear, terrain, 52 + index * 5, center + spread)
+      }
     })
   }
 
   spawnAround(kind: FoodKind, bear: THREE.Vector3, terrain: Terrain, preferredBearing?: number, radiusScale = 1): boolean {
     if (kind === 'salmon') {
-      for (let attempt = 0; attempt < 24; attempt += 1) {
+      for (let attempt = 0; attempt < 36; attempt += 1) {
         const z = bear.z + 28 + this.random() * 78
         const x = terrain.riverX(z)
-        if (Math.hypot(x - bear.x, z - bear.z) < 22) continue
-        this.spawn(kind, new THREE.Vector3(x, terrain.waterY(z) + 0.18, z), terrain)
+        this.spawn(kind, new THREE.Vector3(x, terrain.waterY(z) + 0.25, z), terrain)
         return true
       }
       return false
     }
     const min = (kind === 'honey' ? CONFIG.hunt.spawnMinRadius * 0.82 : CONFIG.hunt.spawnMinRadius) * radiusScale
     const max = (kind === 'honey' ? CONFIG.hunt.spawnMaxRadius * 0.78 : CONFIG.hunt.spawnMaxRadius) * radiusScale
-    for (let attempt = 0; attempt < 48; attempt += 1) {
+    for (let attempt = 0; attempt < 96; attempt += 1) {
       const angle = preferredBearing === undefined
         ? this.random() * Math.PI * 2
-        : preferredBearing + (this.random() - 0.5) * 0.24
+        : preferredBearing + (this.random() - 0.5) * 0.25
       const radius = min + this.random() * (max - min)
       const x = bear.x + Math.cos(angle) * radius
       const z = bear.z + Math.sin(angle) * radius
@@ -93,7 +94,7 @@ export class FoodField {
       return true
     }
     if (preferredBearing !== undefined) {
-      for (let attempt = 0; attempt < 48; attempt += 1) {
+      for (let attempt = 0; attempt < 96; attempt += 1) {
         const angle = this.random() * Math.PI * 2
         const radius = min + this.random() * (max - min)
         const x = bear.x + Math.cos(angle) * radius
@@ -124,23 +125,25 @@ export class FoodField {
       }
 
       if (actor.kind === 'salmon') {
-        actor.swimZ += dt * (0.92 + Math.sin(actor.phase * 0.13) * 0.18)
+        const close = distance < CONFIG.hunt.fishFleeRadius
+        const swimRate = close ? CONFIG.hunt.fishEscapeSpeed : -CONFIG.hunt.fishUpstreamSpeed
+        actor.swimZ += dt * swimRate
         const z = actor.swimZ
-        const x = terrain.riverX(z) + Math.sin(actor.phase * 0.38) * 0.55
+        const x = terrain.riverX(z) + Math.sin(actor.phase * 0.38) * 0.48
         const near = Math.hypot(x - bear.x, z - bear.z)
         const leap = near < 8 ? Math.max(0, 1 - near / 8) * Math.abs(Math.sin(actor.phase * 2.4)) : 0
-        actor.root.position.set(x, terrain.waterY(z) + 0.14 + leap * 0.62, z)
-        actor.root.rotation.y = Math.PI + Math.sin(actor.phase * 0.45) * 0.14
+        actor.root.position.set(x, terrain.waterY(z) + 0.23 + leap * 0.58, z)
+        actor.root.rotation.y = close ? 0 : Math.PI
         actor.root.rotation.x = leap * 0.4
         const tail = actor.root.children[2]
         if (tail) tail.rotation.x = Math.sin(actor.phase * 10) * 0.25
-        this.updateTrack(actor, bear, distance)
+        this.updateTrack(actor, distance)
         continue
       }
       if (actor.kind === 'honey') {
         actor.root.rotation.y = Math.sin(actor.phase * 0.26) * 0.09
         actor.root.position.y = terrain.heightAt(actor.root.position.x, actor.root.position.z) + Math.sin(actor.phase * 2.2) * 0.035
-        this.updateTrack(actor, bear, distance)
+        this.updateTrack(actor, distance)
         continue
       }
 
@@ -154,7 +157,7 @@ export class FoodField {
 
       if (actor.state === 'roaming' && distance < detection) {
         actor.state = 'alert'
-        actor.alertTimer = 0.45 + this.random() * 0.5
+        actor.alertTimer = CONFIG.hunt.alertLag[kind] + this.random() * 0.24
         this.alertEvent = kind
       }
       if (actor.state === 'alert') {
@@ -165,11 +168,11 @@ export class FoodField {
       const pursuitHeading = bearForward && new THREE.Vector2(bearForward.x, bearForward.z).normalize()
       const toPrey = new THREE.Vector2(actor.root.position.x - bear.x, actor.root.position.z - bear.z).normalize()
       const bearingTowardPrey = !!pursuitHeading && pursuitHeading.dot(toPrey) > 0.2
-      const chased = distance < CONFIG.hunt.chaseRadius && bearSpeed > 0.75 && bearingTowardPrey
+      const chased = distance < CONFIG.hunt.pursuitRadius[kind] && bearSpeed > 0.75 && bearingTowardPrey
       if (actor.state === 'fleeing') {
         if (chased) actor.stamina = Math.max(0, actor.stamina - dt / CONFIG.hunt.chaseDuration[kind])
-        else actor.stamina = Math.min(1, actor.stamina + dt * 0.035)
-        if (distance > CONFIG.hunt.escapeRadius && actor.stamina > 0.72) {
+        else actor.stamina = Math.min(1, actor.stamina + dt * (kind === 'coyote' ? 0.075 : 0.035))
+        if (distance > CONFIG.hunt.escapeRadius[kind] && actor.stamina > 0.72) {
           actor.state = 'roaming'
           actor.stamina = Math.min(1, actor.stamina + dt * 0.08)
         }
@@ -184,23 +187,30 @@ export class FoodField {
           actor.state = 'fleeing'
           actor.stamina = 0.22
         }
-      } else if (actor.state === 'roaming' && distance > CONFIG.hunt.chaseRadius) {
+      } else if (actor.state === 'roaming' && distance > CONFIG.hunt.pursuitRadius[kind]) {
         actor.stamina = Math.min(1, actor.stamina + dt * 0.06)
       }
 
       const away = new THREE.Vector2(-dx, -dz)
       if (away.lengthSq() < 0.01) away.set(Math.cos(actor.phase), Math.sin(actor.phase))
       away.normalize()
-      const evasive = Math.sin(actor.phase * 0.72 + actor.id * 2.3) * 0.22
+      const frequency = kind === 'rabbit' ? 2.5 : kind === 'coyote' ? 0.48 : kind === 'moose' ? 0.4 : 0.72
+      const rabbitDistantFlight = kind === 'rabbit' && distance > CONFIG.hunt.rabbitTightEvasionRange
+      const evasive = Math.sin(actor.phase * frequency + actor.id * 2.3)
+        * CONFIG.hunt.evasion[kind] * (rabbitDistantFlight ? 0.08 : 1)
       const side = new THREE.Vector2(-away.y, away.x).multiplyScalar(evasive)
       let speed = 0
-      if (actor.state === 'alert') speed = 0.7
-      else if (actor.state === 'fleeing') speed = CONFIG.hunt.fleeSpeed[kind] * (0.9 + actor.stamina * 0.1)
-      else if (actor.state === 'exhausted') speed = 0.72
-      else speed = 0.22
+      if (actor.state === 'alert') speed = kind === 'rabbit' ? 0.04 : 0.7
+      else if (actor.state === 'fleeing') {
+        const burst = kind === 'rabbit' ? 0.78 + Math.abs(Math.sin(actor.age * 3.2)) * 0.22 : 1
+        speed = CONFIG.hunt.fleeSpeed[kind] * (0.9 + actor.stamina * 0.1) * burst
+      } else if (actor.state === 'exhausted') speed = 0.46
+      else speed = kind === 'rabbit' ? 0.12 : 0.22
       const targetX = actor.state === 'roaming' ? Math.sin(actor.phase * 0.34) * speed : away.x * speed + side.x * speed
       const targetZ = actor.state === 'roaming' ? Math.cos(actor.phase * 0.24) * speed : away.y * speed + side.y * speed
-      const response = actor.state === 'fleeing' ? 3.8 : 1.1
+      const response = actor.state === 'fleeing'
+        ? kind === 'rabbit' ? 8.2 : kind === 'coyote' ? 5.1 : kind === 'moose' ? 2.8 : 3.8
+        : 1.1
       actor.velocity.x = THREE.MathUtils.damp(actor.velocity.x, targetX, response, dt)
       actor.velocity.z = THREE.MathUtils.damp(actor.velocity.z, targetZ, response, dt)
       const nextX = actor.root.position.x + actor.velocity.x * dt
@@ -216,7 +226,7 @@ export class FoodField {
       actor.root.position.y = terrain.heightAt(actor.root.position.x, actor.root.position.z)
       if (actor.velocity.lengthSq() > 0.06) actor.root.rotation.y = Math.atan2(-actor.velocity.x, -actor.velocity.z)
       if (actor.rig) this.animatePrey(actor, dt)
-      this.updateTrack(actor, bear, distance)
+      this.updateTrack(actor, distance)
     }
     if (remove.length) {
       remove.forEach(actor => this.group.remove(actor.root))
@@ -225,7 +235,15 @@ export class FoodField {
     }
   }
 
-  collectNearby(bear: THREE.Vector3, pouncing: boolean, bearForward = new THREE.Vector3(0, 0, -1), bearSpeed = 0, sweepStart = bear): FoodContact | null {
+  /** Land prey need a tired, aligned pounce. Salmon need a slow strike from inside the river. */
+  collectNearby(
+    bear: THREE.Vector3,
+    pouncing: boolean,
+    bearForward = new THREE.Vector3(0, 0, -1),
+    bearSpeed = 0,
+    sweepStart = bear,
+    fishStrike = false,
+  ): FoodContact | null {
     let nearest: FoodActor | undefined
     let best = Number.POSITIVE_INFINITY
     const moveX = bear.x - sweepStart.x
@@ -245,7 +263,9 @@ export class FoodField {
       const dz = actor.root.position.z - closestZ
       const dy = actor.root.position.y - (closestY + 0.6)
       const distanceSq = dx * dx + dz * dz + dy * dy * 0.12
-      const range = actor.kind === 'honey' ? 2.15 : actor.kind === 'salmon' ? 2.75 : CONFIG.player.captureRadius
+      const range = actor.kind === 'honey' ? 2.15
+        : actor.kind === 'salmon' ? CONFIG.hunt.fishStrikeRange
+          : CONFIG.hunt.captureRadius[actor.kind]
       if (distanceSq >= range * range || distanceSq >= best) continue
       const approach = moveLengthSq > 0.0001
         ? new THREE.Vector3(moveX, 0, moveZ)
@@ -266,7 +286,7 @@ export class FoodField {
           continue
         }
       }
-      if (actor.kind === 'salmon' && !committedPounce) continue
+      if (actor.kind === 'salmon' && (!fishStrike || bearSpeed > CONFIG.hunt.fishStrikeMaxSpeed || !facing)) continue
       nearest = actor
       best = distanceSq
     }
@@ -277,7 +297,7 @@ export class FoodField {
     return contact
   }
 
-  /** Surface a concise prompt when a winded animal is close enough to finish the hunt. */
+  /** Surface a concise prompt when a winded land animal is near enough to finish the hunt. */
   huntOpportunity(bear: THREE.Vector3): PreyKind | null {
     let candidate: FoodActor | undefined
     let best = CONFIG.hunt.huntReadyRadius
@@ -322,7 +342,21 @@ export class FoodField {
     this.alertEvent = null
   }
 
-  private updateTrack(actor: FoodActor, _bear: THREE.Vector3, distance: number): void {
+  private spawnFallback(kind: FoodKind, bear: THREE.Vector3, terrain: Terrain, minRadius: number, bearing = -Math.PI / 2): void {
+    for (let ring = 0; ring < 18; ring += 1) {
+      const radius = minRadius + ring * 5
+      for (let spoke = 0; spoke < 18; spoke += 1) {
+        const angle = bearing + spoke / 18 * Math.PI * 2
+        const x = bear.x + Math.cos(angle) * radius
+        const z = bear.z + Math.sin(angle) * radius
+        if (!terrain.isSafeSurface(x, z) || Math.abs(x - terrain.riverX(z)) < 8) continue
+        this.spawn(kind, new THREE.Vector3(x, terrain.heightAt(x, z), z), terrain)
+        return
+      }
+    }
+  }
+
+  private updateTrack(actor: FoodActor, distance: number): void {
     if (distance > CONFIG.hunt.trackingRadius) return
     if (actor.trackRefresh > 0 && actor.lastKnown) return
     actor.lastKnown = actor.root.position.clone()
@@ -331,21 +365,24 @@ export class FoodField {
   }
 
   private animatePrey(actor: FoodActor, dt: number): void {
+    if (!actor.rig) return
     const speed = actor.velocity.length()
-    const stride = THREE.MathUtils.clamp(speed / CONFIG.hunt.fleeSpeed[actor.kind as PreyKind], 0, 1)
+    const kind = actor.kind as PreyKind
+    const stride = THREE.MathUtils.clamp(speed / CONFIG.hunt.fleeSpeed[kind], 0, 1)
     const phase = actor.phase * (2.2 + speed * 1.25)
-    const legs = actor.rig!.legs
     const phases = actor.state === 'roaming' || actor.state === 'alert'
       ? [0, Math.PI, Math.PI * 1.5, Math.PI * 0.5]
       : [Math.PI * 1.55, Math.PI * 1.75, 0, 0.18]
-    legs.forEach((leg, index) => {
-      leg.rotation.x = Math.sin(phase + phases[index]) * stride * (actor.state === 'exhausted' ? 0.18 : 0.54)
+    actor.rig.legs.forEach((leg, index) => {
+      leg.rotation.x = Math.sin(phase + phases[index]) * stride * (actor.state === 'exhausted' ? 0.18 : kind === 'rabbit' ? 0.82 : 0.54)
     })
-    actor.rig!.head.rotation.x = actor.state === 'alert' ? -0.1 : actor.state === 'exhausted' ? 0.19 : Math.sin(actor.phase * 2.6) * 0.025
-    actor.rig!.body.position.y = Math.abs(Math.sin(phase * 2)) * stride * 0.032 - (actor.state === 'exhausted' ? 0.075 : 0)
-    actor.rig!.body.rotation.z = actor.state === 'exhausted' ? Math.sin(actor.phase * 4.1) * 0.035 : 0
-    actor.rig!.body.rotation.x = actor.state === 'fleeing' ? -0.025 : 0
+    actor.rig.head.rotation.x = actor.state === 'alert' ? -0.1 : actor.state === 'exhausted' ? 0.19 : Math.sin(actor.phase * 2.6) * 0.025
+    const rabbitHop = kind === 'rabbit' && actor.state === 'fleeing' ? Math.abs(Math.sin(phase * 0.72)) * stride * 0.14 : 0
+    actor.rig.body.position.y = Math.abs(Math.sin(phase * 2)) * stride * (kind === 'rabbit' ? 0.06 : 0.032) + rabbitHop
+      - (actor.state === 'exhausted' ? 0.075 : 0)
+    actor.rig.body.rotation.z = actor.state === 'exhausted' ? Math.sin(actor.phase * 4.1) * 0.035 : kind === 'rabbit' ? Math.sin(phase) * stride * 0.04 : 0
+    actor.rig.body.rotation.x = actor.state === 'fleeing' ? -0.025 : 0
+    if (actor.rig.tail) actor.rig.tail.rotation.x = Math.sin(phase * 0.35) * stride * (kind === 'coyote' ? 0.14 : 0.045)
     void dt
   }
-
 }

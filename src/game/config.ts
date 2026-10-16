@@ -4,7 +4,7 @@ export const DEFAULT_CONFIG = {
     speedRamp: 0.06,
     maxSpeed: 12.2,
     sprintMultiplier: 1.52,
-    maxFood: 6,
+    maxFood: 8,
     maxHazards: 7,
     invulnerabilitySeconds: 1.4,
   },
@@ -19,6 +19,8 @@ export const DEFAULT_CONFIG = {
     pounceMinSpeed: 3.2,
     pounceFacingDot: 0.05,
     captureRadius: 3.8,
+    riverMoveMultiplier: 0.56,
+    riverMaxSpeed: 3.7,
     sprintCapacity: 4.2,
     sprintRecovery: 0.11,
     stalkMultiplier: 0.28,
@@ -34,16 +36,25 @@ export const DEFAULT_CONFIG = {
     foodSpawnMinSeconds: 13,
     foodSpawnMaxSeconds: 16,
     initialPreyRadiusScale: 0.68,
-    initialPreyFanHalfAngle: 0.6,
-    awareness: { fawn: 42, deer: 37, elk: 33, moose: 28 },
+    initialPreyFanHalfAngle: 1.02,
+    awareness: { rabbit: 30, coyote: 46, fawn: 42, deer: 37, elk: 35, moose: 31 },
+    alertLag: { rabbit: 0.7, coyote: 0.32, fawn: 0.48, deer: 0.42, elk: 0.5, moose: 0.64 },
     stalkAwarenessMultiplier: 0.54,
-    chaseRadius: 78,
-    escapeRadius: 112,
+    pursuitRadius: { rabbit: 24, coyote: 42, fawn: 34, deer: 34, elk: 40, moose: 42 },
+    escapeRadius: { rabbit: 76, coyote: 124, fawn: 94, deer: 112, elk: 124, moose: 114 },
     huntReadyRadius: 20,
     exhaustionThreshold: 0.2,
-    chaseDuration: { fawn: 5.2, deer: 6.4, elk: 7.8, moose: 6.9 },
-    exhaustedWindow: { fawn: 4.4, deer: 4.1, elk: 3.8, moose: 4.0 },
-    fleeSpeed: { fawn: 7.4, deer: 8.2, elk: 9.1, moose: 7.9 },
+    chaseDuration: { rabbit: 4.2, coyote: 13.2, fawn: 5.2, deer: 8.4, elk: 10.2, moose: 12.2 },
+    exhaustedWindow: { rabbit: 2.7, coyote: 3.0, fawn: 4.4, deer: 4.0, elk: 3.6, moose: 3.7 },
+    rabbitTightEvasionRange: 14,
+    fleeSpeed: { rabbit: 10.2, coyote: 9.7, fawn: 7.4, deer: 8.2, elk: 9.1, moose: 7.9 },
+    captureRadius: { rabbit: 2.35, coyote: 3.1, fawn: 3.35, deer: 3.65, elk: 3.8, moose: 4.05 },
+    evasion: { rabbit: 0.58, coyote: 0.18, fawn: 0.3, deer: 0.34, elk: 0.26, moose: 0.16 },
+    fishStrikeRange: 2.55,
+    fishStrikeMaxSpeed: 2.4,
+    fishFleeRadius: 8.5,
+    fishUpstreamSpeed: 0.58,
+    fishEscapeSpeed: 1.75,
   },
   hazards: {
     initialDelay: 4.2,
@@ -58,9 +69,20 @@ export const DEFAULT_CONFIG = {
     fallSpeedDamage: 2,
     fallMaxDamage: 68,
   },
+  river: {
+    logCount: 5,
+    logDamage: 22,
+    logSpeedMin: 1.8,
+    logSpeedMax: 2.8,
+    logHitRadius: 1.2,
+    minLogDistance: 34,
+    maxLogDistance: 150,
+  },
   score: {
     salmon: 120,
     honey: 180,
+    rabbit: 170,
+    coyote: 240,
     fawn: 150,
     deer: 260,
     elk: 420,
@@ -91,8 +113,9 @@ export const DEFAULT_CONFIG = {
 type Mutable<T> = { -readonly [K in keyof T]: T[K] extends number ? number : T[K] extends object ? Mutable<T[K]> : T[K] }
 export const CONFIG: Mutable<typeof DEFAULT_CONFIG> = structuredClone(DEFAULT_CONFIG)
 
-export const FOOD_KINDS = ['salmon', 'honey', 'fawn', 'deer', 'elk', 'moose'] as const
+export const FOOD_KINDS = ['salmon', 'honey', 'rabbit', 'coyote', 'fawn', 'deer', 'elk', 'moose'] as const
 export type FoodKind = typeof FOOD_KINDS[number]
 export const FOOD_LABELS: Record<FoodKind, string> = {
-  salmon: 'Salmon', honey: 'Honey', fawn: 'Fawn', deer: 'Deer', elk: 'Elk', moose: 'Moose',
+  salmon: 'Salmon', honey: 'Honey', rabbit: 'Rabbit', coyote: 'Coyote',
+  fawn: 'Fawn', deer: 'Deer', elk: 'Elk', moose: 'Moose',
 }
