@@ -13,4 +13,4 @@
 
 - [x] Save source-backed behavior notes for each target, include citations and note the rare/non-routine bear-coyote interaction if supported by evidence.
 - [x] Add tests for new species and hunting differences, in-river fish strikes, bear wading, downstream driftwood, swept water collision and river-only log damage; retain tests for the three existing land hazards.
-- [ ] Pass typecheck, unit tests, production build, desktop/mobile browser smoke, and diff checks. Create and push a new PR from the merged `main` branch, without altering merged PR #3.
+- [x] Pass typecheck, unit tests, production build, desktop/mobile browser smoke, and diff checks. Create and push a new PR from the merged `main` branch, without altering merged PR #3. [PR #4](https://github.com/sundaram2021/bear-rush/pull/4) is open on `feat/river-rabbit-coyote-hunts` against `main`.
