@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import { describe, expect, it } from 'vitest'
-import { CONFIG } from '../src/game/config'
+import { CONFIG, FOOD_KINDS } from '../src/game/config'
 import { FoodField } from '../src/game/food'
 import { Terrain } from '../src/game/terrain'
 
@@ -15,17 +15,16 @@ describe('wildlife tracking and pursuit', () => {
     expect(field.count).toBe(0)
   })
 
-  it('starts with a few distant leads instead of guaranteed nearby examples of every species', () => {
+  it('spawns all six food species as trackable leads in the first local area', () => {
     const terrain = new Terrain()
     const field = new FoodField()
     const bear = new THREE.Vector3(-5, terrain.heightAt(-5, 5), 5)
     field.spawnInitial(bear, terrain)
-    expect(field.count).toBeLessThanOrEqual(3)
-    expect(field.count).toBeGreaterThanOrEqual(2)
-    expect(field.kinds).not.toHaveLength(6)
+    expect(field.count).toBe(FOOD_KINDS.length)
+    expect(field.kinds).toEqual(FOOD_KINDS)
     for (const actor of field.group.children) expect(actor.position.distanceTo(bear)).toBeGreaterThan(20)
     field.step(0.1, bear, terrain)
-    expect(field.tracks(bear).length).toBeGreaterThan(0)
+    expect(field.tracks(bear)).toHaveLength(FOOD_KINDS.length)
   })
 
   it('lets a quiet, upwind stalk approach closer before the prey alerts', () => {
@@ -66,7 +65,7 @@ describe('wildlife tracking and pursuit', () => {
     expect(actor.stamina).toBeGreaterThan(0.9)
   })
 
-  it('does not reward an early pounce; the alert creates a real recovery and escape opportunity', () => {
+  it('does not reward an early pounce and gives the prey a brief recovery opportunity', () => {
     const terrain = new Terrain()
     const field = new FoodField()
     const bear = new THREE.Vector3(0, terrain.heightAt(0, 2), 2)
@@ -77,11 +76,11 @@ describe('wildlife tracking and pursuit', () => {
     expect(field.kinds).toEqual(['deer'])
     const actor = (field as unknown as { actors: Array<{ state: string; stamina: number; missedTimer: number }> }).actors[0]
     expect(actor.state).toBe('fleeing')
-    expect(actor.stamina).toBeGreaterThan(0.3)
-    expect(actor.missedTimer).toBeGreaterThan(2.5)
+    expect(actor.stamina).toBeGreaterThan(0.25)
+    expect(actor.missedTimer).toBeGreaterThan(1.5)
   })
 
-  it('allows a close, front-on pounce only after a sustained close pursuit and within a narrow window', () => {
+  it('allows a close front-on pounce after sustained pursuit within the visible exhaustion window', () => {
     const terrain = new Terrain()
     const field = new FoodField()
     const bear = new THREE.Vector3(0, terrain.heightAt(0, 14), 14)
@@ -95,12 +94,26 @@ describe('wildlife tracking and pursuit', () => {
     }
     const actor = (field as unknown as { actors: Array<{ state: string; exhaustedTimer: number }> }).actors[0]
     expect(actor.state).toBe('exhausted')
-    expect(actor.exhaustedTimer).toBeLessThanOrEqual(1.55)
+    expect(actor.exhaustedTimer).toBeLessThanOrEqual(CONFIG.hunt.exhaustedWindow.fawn)
     expect(actor.exhaustedTimer).toBeGreaterThan(0)
-    expect(CONFIG.hunt.exhaustedWindow.fawn).toBeLessThan(2)
+    expect(CONFIG.hunt.exhaustedWindow.fawn).toBeGreaterThan(3)
     const prey = field.group.children[0]
-    bear.set(prey.position.x, terrain.heightAt(prey.position.x, prey.position.z + 1.4), prey.position.z + 1.4)
+    bear.set(prey.position.x, terrain.heightAt(prey.position.x, prey.position.z + 2.2), prey.position.z + 2.2)
+    expect(field.huntOpportunity(bear)).toBe('fawn')
     expect(field.collectNearby(bear, true, forward, 5)?.kind).toBe('fawn')
+    expect(field.count).toBe(0)
+  })
+
+  it('catches an exhausted animal when a committed pounce sweeps through it between frames', () => {
+    const terrain = new Terrain()
+    const field = new FoodField()
+    field.spawn('fawn', new THREE.Vector3(0, terrain.heightAt(0, 0), 0), terrain)
+    const actor = (field as unknown as { actors: Array<{ state: string; exhaustedTimer: number }> }).actors[0]
+    actor.state = 'exhausted'
+    actor.exhaustedTimer = CONFIG.hunt.exhaustedWindow.fawn
+    const start = new THREE.Vector3(-6, terrain.heightAt(-6, 0), 0)
+    const end = new THREE.Vector3(6, terrain.heightAt(6, 0), 0)
+    expect(field.collectNearby(end, true, new THREE.Vector3(1, 0, 0), 5, start)?.kind).toBe('fawn')
     expect(field.count).toBe(0)
   })
 

@@ -3,7 +3,7 @@ import type { Audio } from '../engine/audio'
 import type { Input } from '../engine/input'
 import type { Renderer } from '../engine/renderer'
 import type { Quality } from '../engine/save'
-import { CONFIG, FOOD_LABELS } from './config'
+import { CONFIG, FOOD_KINDS, FOOD_LABELS } from './config'
 import { Effects } from './fx'
 import { FoodField, type WildlifeTrack } from './food'
 import { HazardField } from './hazards'
@@ -15,7 +15,7 @@ import type { Terrain } from './terrain'
 
 export type Mode = 'attract' | 'playing' | 'paused' | 'ended'
 export type Hint = 'move' | 'hunt' | 'dangers' | null
-export type MapSnapshot = { x: number; z: number; heading: number; radius: number; wind: { x: number; z: number }; terrain: Terrain; tracks: WildlifeTrack[] }
+export type MapSnapshot = { x: number; z: number; heading: number; radius: number; wind: { x: number; z: number }; terrain: Terrain; tracks: WildlifeTrack[]; huntReady: keyof typeof FOOD_LABELS | null }
 export type GameHooks = {
   popup(text: string, screen: { x: number; y: number }, kind: 'score' | 'hurt'): void
   hurt(): void
@@ -37,6 +37,7 @@ export class Game {
   private readonly fx = new Effects()
   private time = 0
   private nextFood = CONFIG.hunt.foodSpawnMinSeconds
+  private foodCursor = 2
   private nextHazard = CONFIG.hazards.initialDelay
   private tutorialTimer = 0
   private recoveryTimer = 0
@@ -65,7 +66,8 @@ export class Game {
   get mapSnapshot(): MapSnapshot {
     const wind = this.world.windVector()
     return { x: this.player.position.x, z: this.player.position.z, heading: this.player.root.rotation.y,
-      radius: CONFIG.hunt.trackingRadius, wind: { x: wind.x, z: wind.z }, terrain: this.world.terrain, tracks: this.food.tracks(this.player.position) }
+      radius: CONFIG.hunt.trackingRadius, wind: { x: wind.x, z: wind.z }, terrain: this.world.terrain,
+      tracks: this.food.tracks(this.player.position), huntReady: this.food.huntOpportunity(this.player.position) }
   }
 
   start(tutorial: boolean): void {
@@ -77,6 +79,7 @@ export class Game {
     this.fx.clear()
     this.run = { ...createRun(), unranked: tuning.unranked }
     this.food.spawnInitial(this.player.position, this.world.terrain)
+    this.foodCursor = 2
     this.nextFood = 8 + Math.random() * 5
     this.nextHazard = CONFIG.hazards.initialDelay
     this.tutorialTimer = tutorial ? 15 : 0
@@ -129,6 +132,7 @@ export class Game {
     }
 
     const pounce = this.input.consume('catch')
+    const previousPosition = this.player.position.clone()
     const pounceStarted = this.player.step(
       dt, this.input.move.x, this.input.move.y, this.speedLimit,
       this.input.held('sprint'), this.cameraYaw, pounce, this.input.held('stalk'),
@@ -149,7 +153,7 @@ export class Game {
     this.hazards.step(dt, this.world.terrain, this.player.position)
     this.run = tick(this.run, dt, this.player.speed)
 
-    const contact = this.food.collectNearby(this.player.position, this.player.pouncing, this.player.forward, this.player.speed)
+    const contact = this.food.collectNearby(this.player.position, this.player.pouncing, this.player.forward, this.player.speed, previousPosition)
     if (contact) this.collectFood(contact.kind, contact.position)
     const missed = this.food.consumeMissedHunt()
     if (missed) this.audio.play('hunt-miss')
@@ -209,6 +213,7 @@ export class Game {
   private collectFood(kind: keyof typeof FOOD_LABELS, at: THREE.Vector3): void {
     const result = eatFood(this.run, kind)
     this.run = result.state
+    if (kind === 'fawn' || kind === 'deer' || kind === 'elk' || kind === 'moose') this.player.capture()
     this.audio.play(kind === 'honey' ? 'forage' : kind === 'salmon' ? 'fish-catch' : 'bear-catch')
     if (kind !== 'honey') this.audio.play('bear-grunt')
     const color = kind === 'honey' ? '#e6b84e' : kind === 'salmon' ? '#e88c68' : '#c9a87b'
@@ -227,16 +232,13 @@ export class Game {
     this.player.hit()
     if (reason === 'fall') this.player.root.position.y = at.y - 1.1
     this.invulnerabilityTimer = CONFIG.run.invulnerabilitySeconds
-    this.recoveryTimer = this.run.phase === 'playing'
-      ? result.lifeLost ? CONFIG.run.recoverySeconds : reason === 'fall' ? 1.05 : 0.42
-      : 0
+    this.recoveryTimer = this.run.phase === 'playing' ? reason === 'fall' ? 1.05 : 0.42 : 0
     this.hooks.hurt()
     this.cameraShake = 0.3 + result.healthLost / 100 * 0.42
     const source = reason === 'poison' ? 'POISONOUS FOOD'
       : reason === 'trap' ? 'BEAR TRAP' : 'SLIPPED INTO THE TRENCH'
-    const copy = `${source} · −${Math.round(result.healthLost)}% HEALTH${result.lifeLost ? ' · −1 LIFE' : ''}`
+    const copy = `${source} · −${Math.round(result.healthLost)}% HEALTH`
     this.audio.play(reason === 'poison' ? 'poison' : reason === 'trap' ? 'trap' : 'fall')
-    if (result.lifeLost) this.audio.play('life-loss')
     this.audio.play('bear-hit')
     this.fx.burst(at, reason === 'poison' ? '#954d72' : reason === 'trap' ? '#a9aa9b' : '#8b8174', 16, 3.2)
     this.hooks.popup(copy, this.project(at), 'hurt')
@@ -252,14 +254,10 @@ export class Game {
     this.hooks.end(this.run)
   }
 
-  private pickFood(): keyof typeof FOOD_LABELS {
-    const roll = Math.random()
-    if (roll < 0.19) return 'salmon'
-    if (roll < 0.33) return 'honey'
-    if (roll < 0.53) return 'fawn'
-    if (roll < 0.78) return 'deer'
-    if (roll < 0.94) return 'elk'
-    return 'moose'
+  private pickFood(): typeof FOOD_KINDS[number] {
+    const kind = FOOD_KINDS[this.foodCursor % FOOD_KINDS.length]
+    this.foodCursor += 1
+    return kind
   }
 
   private findHazardPoint(): THREE.Vector3 | null {

@@ -1,15 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import { CONFIG, FOOD_KINDS } from '../src/game/config'
-import { applyDamage, createRun, eatFood, loseLife, speedCap, tick } from '../src/game/rules'
+import { applyDamage, createRun, eatFood, speedCap, tick } from '../src/game/rules'
 
 describe('mountain hunt rules', () => {
-  it('starts with three lives and has no time-based ending', () => {
+  it('starts at 100% health and has no time-based ending', () => {
     let run = createRun()
-    expect(run.lives).toBe(3)
     expect(run.health).toBe(100)
+    expect('lives' in run).toBe(false)
     run = tick(run, 360, 0)
     expect(run.phase).toBe('playing')
-    expect(run.lives).toBe(3)
+    expect(run.health).toBe(100)
   })
 
   it('raises the available running speed over time and caps it fairly', () => {
@@ -23,30 +23,52 @@ describe('mountain hunt rules', () => {
     const run = tick(createRun(), 2, 8)
     expect(run.elapsed).toBe(2)
     expect(run.distance).toBe(16)
-    expect(run.lives).toBe(3)
   })
 
-  it('chips health by percent and removes a life only when health reaches zero', () => {
+  it('chips health by percentage and ends the run immediately at zero', () => {
     let run = createRun()
     let result = applyDamage(run, CONFIG.hazards.poisonDamage, 'poison')
     expect(result.healthLost).toBe(36)
-    expect(result.lifeLost).toBe(false)
+    expect(result.gameOver).toBe(false)
     run = result.state
     expect(run.health).toBe(64)
-    expect(run.lives).toBe(3)
+    expect(run.phase).toBe('playing')
 
     result = applyDamage(run, CONFIG.hazards.trapDamage, 'trap')
-    expect(result.lifeLost).toBe(false)
+    expect(result.healthLost).toBe(44)
+    expect(result.gameOver).toBe(false)
     run = result.state
     expect(run.health).toBe(20)
 
     result = applyDamage(run, CONFIG.hazards.poisonDamage, 'poison')
     expect(result.healthLost).toBe(20)
-    expect(result.lifeLost).toBe(true)
+    expect(result.gameOver).toBe(true)
     run = result.state
-    expect(run.lives).toBe(2)
-    expect(run.health).toBe(CONFIG.hazards.healthAfterLife)
-    expect(run.phase).toBe('playing')
+    expect(run.health).toBe(0)
+    expect(run.phase).toBe('lost')
+    expect(run.loseReason).toBe('poison')
+  })
+
+  it('accepts only positive finite damage and does not restore health', () => {
+    const run = createRun()
+    expect(applyDamage(run, 0, 'trap').state).toBe(run)
+    expect(applyDamage(run, -20, 'trap').state).toBe(run)
+    expect(applyDamage(run, Number.NaN, 'trap').state).toBe(run)
+    expect(run.health).toBe(100)
+  })
+
+  it('uses only poisonous food, bear traps and trench falls as damage reasons', () => {
+    let run = createRun()
+    for (const reason of ['poison', 'trap'] as const) {
+      const result = applyDamage(run, 40, reason)
+      expect(result.gameOver).toBe(false)
+      run = result.state
+    }
+    const fall = applyDamage(run, 40, 'fall')
+    expect(fall.gameOver).toBe(true)
+    expect(fall.state.health).toBe(0)
+    expect(fall.state.phase).toBe('lost')
+    expect(fall.state.loseReason).toBe('fall')
   })
 
   it('supports all six scored food types and combo multipliers', () => {
@@ -63,26 +85,12 @@ describe('mountain hunt rules', () => {
     expect(tick(run, CONFIG.score.comboWindow + 0.01, 0).combo).toBe(0)
   })
 
-  it('only poisonous food, bear traps and trench falls lose a life, one per event', () => {
-    let run = createRun()
-    for (const reason of ['poison', 'trap', 'fall'] as const) {
-      const result = loseLife(run, reason)
-      expect(result.lifeLost).toBe(true)
-      run = result.state
-      expect(run.lives).toBeLessThan(3)
-    }
-    expect(run.lives).toBe(0)
+  it('freezes score, health and phase after health reaches zero', () => {
+    let run = applyDamage(createRun(), 100, 'fall').state
+    expect(run.health).toBe(0)
     expect(run.phase).toBe('lost')
-    expect(run.loseReason).toBe('fall')
-  })
-
-  it('freezes score and life state after the third life is gone', () => {
-    let run = createRun()
-    run = loseLife(run, 'poison').state
-    run = loseLife(run, 'trap').state
-    run = loseLife(run, 'fall').state
     expect(tick(run, 1, 16)).toBe(run)
     expect(eatFood(run, 'salmon').points).toBe(0)
-    expect(loseLife(run, 'poison').state).toBe(run)
+    expect(applyDamage(run, 20, 'poison').state).toBe(run)
   })
 })

@@ -4,7 +4,7 @@ import { detectLocale, resolveLocale } from '../src/engine/i18n'
 
 const required = [
   'game.title', 'game.tagline', 'menu.play', 'menu.settings', 'menu.retry', 'controls.title',
-  'controls.desktop', 'controls.touch', 'controls.stalk', 'controls.goal', 'controls.hazards', 'controls.huntButton',
+  'controls.desktop', 'controls.touch', 'controls.stalk', 'controls.goal', 'controls.hazards', 'controls.huntButton', 'hunt.ready',
   'hud.score', 'hud.food', 'hud.distance', 'hud.health', 'hud.map', 'hud.map.label', 'hud.map.wind', 'hud.map.legend', 'weather.clear', 'weather.snow', 'pause.title',
   'settings.title', 'settings.ambience', 'settings.effects', 'settings.mute', 'settings.privacy',
   'results.title', 'results.food', 'results.score', 'results.distance', 'results.time', 'results.best',
@@ -21,7 +21,7 @@ describe('English-only mountain-hunt copy', () => {
 
   it('includes all foods, only the requested dangers, controls and main screens', () => {
     for (const key of required) expect(en[key as keyof typeof en], key).toBeTruthy()
-    expect(en['controls.hazards']).toContain('poisonous food')
+    expect(en['controls.hazards'].toLowerCase()).toContain('poisonous food')
     expect(en['controls.hazards']).toContain('trench')
     expect(en['controls.hazards']).toContain('bear traps')
     expect(en['controls.hazards']).toContain('0%')

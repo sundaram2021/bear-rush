@@ -18,7 +18,6 @@ function number<S extends keyof typeof CONFIG>(section: S, key: keyof typeof CON
   })
 }
 
-number('run', 'lives', 'Hunt rules', 'Starting lives', 1, 5, 1, 'lives', 'NEXT_RUN')
 number('run', 'baseSpeed', 'Hunt rules', 'Starting run speed', 3, 10, 0.2, 'm/s', 'NEXT_RUN')
 number('run', 'speedRamp', 'Hunt rules', 'Speed increase', 0.01, 0.12, 0.005, 'm/s/s', 'NEXT_RUN')
 number('run', 'maxSpeed', 'Hunt rules', 'Top speed', 8, 20, 0.5, 'm/s', 'NEXT_RUN')

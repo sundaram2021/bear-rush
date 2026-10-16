@@ -11,6 +11,7 @@ export class Player {
   readonly velocity = new THREE.Vector3()
   private pounceTimer = 0
   private pounceCooldown = 0
+  private captureTimer = 0
   private hitTimer = 0
   private gait = 0
   private strideBlend = 0
@@ -45,6 +46,7 @@ export class Player {
   step(dt: number, x: number, y: number, speedLimit: number, sprint: boolean, cameraYaw: number, pounce: boolean, stalk = false): boolean {
     this.pounceCooldown = Math.max(0, this.pounceCooldown - dt)
     this.pounceTimer = Math.max(0, this.pounceTimer - dt)
+    this.captureTimer = Math.max(0, this.captureTimer - dt)
     this.hitTimer = Math.max(0, this.hitTimer - dt)
     const forward = new THREE.Vector3(-Math.sin(cameraYaw), 0, -Math.cos(cameraYaw))
     const right = new THREE.Vector3(Math.cos(cameraYaw), 0, -Math.sin(cameraYaw))
@@ -138,9 +140,11 @@ export class Player {
     })
     const bounce = Math.abs(Math.sin(this.gait * (gait === 'walk' ? 1 : 2))) * this.strideBlend
     const impact = this.pounceTimer > 0 ? Math.sin((1 - this.pounceTimer / CONFIG.player.pounceDuration) * Math.PI) : 0
+    const captureProgress = 1 - this.captureTimer / 0.62
+    const captureDip = this.captureTimer > 0 ? Math.sin(captureProgress * Math.PI) : 0
     this.rig.body.position.y = Math.sin(time * 1.1) * 0.012 + bounce * (gait === 'gallop' ? 0.11 : 0.045) + impact * 0.055
-    this.rig.body.rotation.x = this.pounceTimer > 0 ? -impact * 0.22 : THREE.MathUtils.damp(this.rig.body.rotation.x, gait === 'gallop' ? -0.035 : 0, 4, dt)
-    this.rig.head.rotation.x = -this.rig.body.rotation.x * 0.48 + Math.sin(this.gait * 0.5) * moving * 0.035 - impact * 0.1
+    this.rig.body.rotation.x = this.captureTimer > 0 ? -captureDip * 0.3 : this.pounceTimer > 0 ? -impact * 0.22 : THREE.MathUtils.damp(this.rig.body.rotation.x, gait === 'gallop' ? -0.035 : 0, 4, dt)
+    this.rig.head.rotation.x = -this.rig.body.rotation.x * 0.48 + Math.sin(this.gait * 0.5) * moving * 0.035 - impact * 0.1 - captureDip * 0.12
     this.rig.head.rotation.z = Math.sin(this.gait * 0.5 + 1) * moving * 0.024
     if (this.hitTimer > 0) {
       const blink = Math.floor(time * 13) % 2 === 0
@@ -153,6 +157,13 @@ export class Player {
   }
 
   hit(): void { this.hitTimer = 0.68 }
+
+  capture(): void {
+    this.pounceTimer = 0
+    this.captureTimer = 0.62
+    this.velocity.multiplyScalar(0.24)
+    this.speedValue = this.velocity.length()
+  }
 
   respawn(): void {
     this.position.copy(this.lastSafe)
@@ -175,6 +186,7 @@ export class Player {
     this.rig.legs.forEach(leg => leg.rotation.set(0, 0, 0))
     this.pounceTimer = 0
     this.pounceCooldown = 0
+    this.captureTimer = 0
     this.hitTimer = 0
     this.gait = 0
     this.lastFootCycle.fill(-1)

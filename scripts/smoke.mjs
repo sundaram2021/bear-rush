@@ -77,6 +77,9 @@ try {
   if (!(await page.locator('.minimap').isVisible())) throw new Error('wildlife tracking minimap is not visible')
   if (!(before.mapTracks > 0 && before.mapRadius >= 160)) throw new Error(`nearby wildlife tracks are not disclosed on the map: ${JSON.stringify(before)}`)
   if (!Number.isFinite(before.wind.x) || !Number.isFinite(before.wind.z) || Math.hypot(before.wind.x, before.wind.z) < 0.9) throw new Error(`wind direction is missing from the tracking map: ${JSON.stringify(before.wind)}`)
+  const initialKinds = await page.evaluate(() => [...new Set(window.__game.game.food.kinds)].sort())
+  if (JSON.stringify(initialKinds) !== JSON.stringify(['deer', 'elk', 'fawn', 'honey', 'moose', 'salmon'])) throw new Error(`the starting area must show all six food species: ${JSON.stringify(initialKinds)}`)
+  if (await page.locator('.life, .lives').count() !== 0) throw new Error('the obsolete heart/life HUD is still present')
 
   stage = 'percentage health damage'
   await page.evaluate(() => {
@@ -85,8 +88,8 @@ try {
   })
   await page.waitForFunction(() => window.__game.game.run.health < 100, null, { timeout: 8_000, polling: 100 })
   const chipped = await state(page)
-  if (chipped.run.health !== 64 || chipped.run.lives !== 3 || await page.locator('.health-bar').getAttribute('aria-valuenow') !== '64') {
-    throw new Error(`a poison hit should chip health but not a heart: ${JSON.stringify(chipped.run)}`)
+  if (chipped.run.health !== 64 || 'lives' in chipped.run || await page.locator('.health-bar').getAttribute('aria-valuenow') !== '64') {
+    throw new Error(`a poison hit should chip the single health pool: ${JSON.stringify(chipped.run)}`)
   }
 
   stage = 'desktop stalk input'
@@ -159,20 +162,20 @@ try {
     const { game, rules } = window.__game
     game.run = rules.eatFood(rules.createRun(), 'salmon').state
     const at = game.player.position.clone()
-    const sequence = ['poison', 'trap', 'fall', 'trap', 'poison', 'fall', 'fall']
+    const sequence = ['poison', 'trap', 'fall']
     const states = []
     for (const reason of sequence) {
       game['invulnerabilityTimer'] = 0
       game['recoveryTimer'] = 0
       game['resolveDanger'](reason, at)
-      states.push({ reason, health: game.run.health, lives: game.run.lives, phase: game.run.phase })
+      states.push({ reason, health: game.run.health, phase: game.run.phase })
       if (game.run.phase === 'lost') break
     }
-    return { states, finalLives: game.run.lives, phase: game.run.phase, reason: game.run.loseReason }
+    return { states, finalHealth: game.run.health, phase: game.run.phase, reason: game.run.loseReason }
   })
-  const expectedLives = [3, 3, 2, 2, 1, 1, 0]
-  if (dangers.states.length !== 7 || dangers.states.some((hit, index) => hit.lives !== expectedLives[index]) || dangers.finalLives !== 0 || dangers.phase !== 'lost' || dangers.reason !== 'fall') {
-    throw new Error(`percentage-health/three-danger life thresholds failed: ${JSON.stringify(dangers)}`)
+  const expectedHealth = [64, 20, 0]
+  if (dangers.states.length !== 3 || dangers.states.some((hit, index) => hit.health !== expectedHealth[index]) || dangers.finalHealth !== 0 || dangers.phase !== 'lost' || dangers.reason !== 'fall') {
+    throw new Error(`percentage-health/three-danger game-over thresholds failed: ${JSON.stringify(dangers)}`)
   }
   await page.waitForSelector('[data-screen="results"].is-active', { timeout: 10_000 })
   await page.waitForTimeout(250)
@@ -218,7 +221,7 @@ try {
   if (errors.length) throw new Error(`browser errors:\n  ${errors.join('\n  ')}`)
   await browser.close()
   cleanup()
-  console.log('smoke: OK — endless map/wind/track, desktop and touch stalking, speed ramp, food pounce, healthy-prey miss, percentage-health injury/life thresholds, three-only dangers, local save, pause/settings')
+  console.log('smoke: OK — endless map/wind/track, six initial food species, desktop and touch stalking, speed ramp, food pounce, healthy-prey miss, percentage-health game over, heart-free HUD, three-only dangers, local save, pause/settings')
 } catch (error) {
   await fail(error?.message ?? String(error))
 }
