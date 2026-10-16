@@ -1,20 +1,17 @@
-// End-to-end smoke for the revised bank-side fishing game; pnpm build must complete first.
+// Mountain-hunt end-to-end smoke: pnpm build must complete first.
 import { spawn } from 'node:child_process'
-import { mkdirSync } from 'node:fs'
 import { chromium } from 'playwright'
 
 const port = 4300 + Math.floor(Math.random() * 500)
 const url = `http://127.0.0.1:${port}/`
-const out = process.env.SHOTS_DIR ?? 'shots'
-mkdirSync(out, { recursive: true })
 const server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', 'preview', '--port', String(port), '--strictPort', '--host', '127.0.0.1'], { stdio: 'ignore', detached: false })
 let browser
-const guard = setTimeout(() => fail('timed out'), 120_000)
+const guard = setTimeout(() => fail('timed out'), 60_000)
 function cleanup() { clearTimeout(guard); try { server.kill('SIGTERM') } catch {} }
 async function fail(message) {
+  cleanup()
   console.error(`smoke: FAIL — ${message}`)
   await browser?.close().catch(() => {})
-  cleanup()
   process.exit(1)
 }
 async function waitForServer() {
@@ -34,6 +31,9 @@ async function openGame(context, errors) {
   await page.evaluate(async () => {
     await document.fonts.ready
     if (document.documentElement.lang !== 'en') throw new Error(`Game must stay English-only; lang=${document.documentElement.lang}`)
+    if (document.querySelector('input[type="password"]')) throw new Error('The game must not ask for account credentials')
+    window.__game.save.update({ quality: 'low' })
+    window.__game.game.setQuality('low')
   })
   return page
 }
@@ -41,118 +41,119 @@ const state = page => page.evaluate(() => {
   const { game, save } = window.__game
   return {
     mode: game.mode,
-    run: { ...game.run },
+    run: { ...game.run, tally: { ...game.run.tally } },
     speed: game.speed,
-    pos: { x: game.player.root.position.x, y: game.player.root.position.y, z: game.player.root.position.z },
+    speedLimit: game.speedLimit,
+    pos: { x: game.player.position.x, y: game.player.position.y, z: game.player.position.z },
+    weather: game.weather,
+    mapTracks: game.mapSnapshot.tracks.length,
+    mapRadius: game.mapSnapshot.radius,
+    stamina: game.stamina,
+    worldChunks: game.world.chunkCount,
+    foodCount: game.food.count,
+    hazardCount: game.hazards.count,
     best: save.data.bestScore,
-    ready: game['fish'].isCatchReady(game.player.position),
+    bestFoods: save.data.bestCollected,
   }
 })
 
 try {
   await waitForServer()
-  browser = await chromium.launch({ args: ['--ignore-gpu-blocklist'] }).catch(() => chromium.launch({ args: ['--ignore-gpu-blocklist'], channel: 'chrome' }))
+  browser = await chromium.launch({ args: ['--ignore-gpu-blocklist', '--use-gl=angle', '--use-angle=swiftshader'] })
+    .catch(() => chromium.launch({ args: ['--ignore-gpu-blocklist'], channel: 'chrome' }))
   const errors = []
-  const desktop = await browser.newContext({ viewport: { width: 1280, height: 720 }, locale: 'en-US' })
+  const desktop = await browser.newContext({ viewport: { width: 1360, height: 820 }, locale: 'en-US' })
   const page = await openGame(desktop, errors)
-  await page.screenshot({ path: `${out}/01-title.png` })
   await page.click('[data-action="play"]')
   await page.waitForSelector('[data-screen="hud"].is-active')
   const before = await state(page)
-  await page.keyboard.down('KeyD')
-  await page.waitForTimeout(450)
-  await page.keyboard.up('KeyD')
-  await page.waitForTimeout(250)
-  const after = await state(page)
-  if (after.mode !== 'playing') throw new Error(`expected playing, got ${after.mode}`)
-  if (!(after.run.elapsed > before.run.elapsed && after.run.distance > before.run.distance)) throw new Error('river distance/time did not advance')
-  if (!(after.pos.x > before.pos.x + 0.08 || after.pos.z < before.pos.z - 0.08)) throw new Error(`bank movement did not move the bear (${before.pos.x},${before.pos.z} → ${after.pos.x},${after.pos.z})`)
+  if (!(await page.locator('.minimap').isVisible())) throw new Error('wildlife tracking minimap is not visible')
+  if (!(before.mapTracks > 0 && before.mapRadius >= 160)) throw new Error(`nearby wildlife tracks are not disclosed on the map: ${JSON.stringify(before)}`)
 
-  // A fish directly beside the bear is NOT caught passively; it must leap and receive a Catch action.
+  await page.keyboard.down('KeyW')
+  await page.waitForFunction(() => window.__game.game.run.distance > 0.65, null, { timeout: 15_000, polling: 100 })
+  await page.keyboard.up('KeyW')
+  const afterMove = await state(page)
+  if (afterMove.mode !== 'playing') throw new Error(`expected playing, got ${afterMove.mode}`)
+  if (!(afterMove.run.elapsed > before.run.elapsed && afterMove.run.distance > before.run.distance)) throw new Error('survival time and movement distance did not advance')
+  if (!(afterMove.pos.z < before.pos.z - 0.45)) throw new Error(`forward movement did not move the bear (${before.pos.z} → ${afterMove.pos.z})`)
+  if (!(afterMove.speedLimit > before.speedLimit)) throw new Error('the available bear speed cap did not rise during the run')
+
   await page.evaluate(() => {
     const { game } = window.__game
-    game['fish'].reset()
-    game['fish'].spawn(game.player.z - 0.1, game.player.position.x - game.world.riverCenterX(game.player.z), 0)
-    game['fish'].step(0, game.speed, game.world, game.player.z)
+    game.food.spawn('honey', game.player.position.clone(), game.world.terrain)
   })
-  const beforeCatch = await state(page)
-  if (beforeCatch.run.collected !== 0) throw new Error('fish was collected without an explicit catch')
-  await page.keyboard.press('Space')
-  await page.waitForTimeout(80)
-  const caught = await state(page)
-  if (caught.run.collected !== 1 || caught.run.score < 100) throw new Error('timed fish catch did not increase fish and score')
-  await page.screenshot({ path: `${out}/02-river-fishing.png` })
+  await page.keyboard.down('Space')
+  await page.waitForTimeout(1000)
+  await page.keyboard.up('Space')
+  const hunted = await state(page)
+  if (hunted.run.tally.honey !== 1 || hunted.run.score < 180) throw new Error(`pounce did not collect honey: ${JSON.stringify(hunted.run)}`)
 
-  // Exercise collision rules via distinct game collision calls (each hazard is consumed once).
-  const hits = await page.evaluate(async () => {
-    const { game, rules } = window.__game
-    game.player.reset()
-    const point = game.player.position.clone()
-    const bankOffset = point.x - game.world.riverCenterX(point.z)
-    game['obstacles'].reset()
-    game['obstacles'].spawn('block', game.player.z, bankOffset)
-    game['obstacles'].step(0, 0, game.world, game.player.z)
-    const first = game['obstacles'].collisions(point)
-    if (first.length !== 1) throw new Error('first block did not collide')
-    const wood1 = rules.hitSmallBlock(game.run).state
-    game.run = wood1
-    game['obstacles'].spawn('block', game.player.z, bankOffset)
-    game['obstacles'].step(0, 0, game.world, game.player.z)
-    const second = game['obstacles'].collisions(point)
-    const afterSecond = rules.hitSmallBlock(game.run)
-    game.run = afterSecond.state
-    const blockResult = { lives: game.run.lives, blockHits: game.run.blockHits, secondLifeLost: afterSecond.lifeLost }
-    const algaeResult = rules.eatAlgae(game.run)
-    return { blockResult, algaeLifeLost: algaeResult.lifeLost, algaeLives: algaeResult.state.lives, distinct: second.length === 1 }
-  })
-  if (hits.blockResult.lives !== 2 || hits.blockResult.blockHits !== 0 || !hits.blockResult.secondLifeLost || !hits.distinct) throw new Error(`two-block rule failed: ${JSON.stringify(hits)}`)
-  if (!hits.algaeLifeLost || hits.algaeLives !== 1) throw new Error(`algae one-life rule failed: ${JSON.stringify(hits)}`)
-
-  await page.click('[data-action="pause"]')
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent('game:pause')))
   await page.waitForSelector('[data-screen="pause"].is-active')
   await page.click('[data-screen="pause"] [data-action="settings"]')
   await page.waitForSelector('[data-screen="settings"].is-active')
-  await page.screenshot({ path: `${out}/03-settings.png` })
+  await page.waitForTimeout(300)
   await page.keyboard.press('Escape')
   await page.waitForSelector('[data-screen="pause"].is-active')
-  if ((await state(page)).mode !== 'paused') throw new Error('returning from settings resumed the run')
+  if ((await state(page)).mode !== 'paused') throw new Error('returning from settings resumed the hunt')
   await page.click('[data-action="resume"]')
   await page.waitForSelector('[data-screen="hud"].is-active')
 
-  // Isolated run reaches game over only after 3 algae hazards; local best persists.
-  const end = await page.evaluate(async () => {
-    const { game } = window.__game
-    const { rules } = window.__game
-    game.run = rules.createRun()
-    game.run = rules.collect(game.run).state
-    game.run = rules.eatAlgae(rules.eatAlgae(rules.eatAlgae(game.run).state).state).state
-    game['finishRun']()
-    return { phase: game.run.phase, lives: game.run.lives, mode: game.mode }
+  const dangers = await page.evaluate(() => {
+    const { game, rules } = window.__game
+    game.run = rules.eatFood(rules.createRun(), 'salmon').state
+    const at = game.player.position.clone()
+    game['resolveDanger']('poison', at)
+    const poisonLives = game.run.lives
+    game['invulnerabilityTimer'] = 0
+    game['recoveryTimer'] = 0
+    game['resolveDanger']('trap', at)
+    const trapLives = game.run.lives
+    game['invulnerabilityTimer'] = 0
+    game['recoveryTimer'] = 0
+    game['resolveDanger']('fall', at)
+    return { poisonLives, trapLives, finalLives: game.run.lives, phase: game.run.phase, reason: game.run.loseReason }
   })
-  if (end.phase !== 'lost' || end.lives !== 0 || end.mode !== 'ended') throw new Error(`three-life end state failed: ${JSON.stringify(end)}`)
-  await page.waitForSelector('[data-screen="results"].is-active', { timeout: 5000 })
-  await page.screenshot({ path: `${out}/04-three-lives-results.png` })
+  if (dangers.poisonLives !== 2 || dangers.trapLives !== 1 || dangers.finalLives !== 0 || dangers.phase !== 'lost' || dangers.reason !== 'fall') {
+    throw new Error(`three-danger/three-life rule failed: ${JSON.stringify(dangers)}`)
+  }
+  await page.waitForSelector('[data-screen="results"].is-active', { timeout: 10_000 })
+  await page.waitForTimeout(250)
   const done = await state(page)
-  if (done.best < 100) throw new Error('local personal best was not saved')
+  if (done.best < 120 || done.bestFoods < 1) throw new Error('local best score/food count did not save')
+  const endless = await page.evaluate(() => {
+    const { game } = window.__game
+    const x = 4_800; const z = -7_800
+    game.player.position.set(x, game.world.terrain.heightAt(x, z), z)
+    game.player.root.position.copy(game.player.position)
+    game.world.update(0.1, game.player.position)
+    return { x: game.player.position.x, z: game.player.position.z, chunks: game.world.chunkCount }
+  })
+  if (endless.x !== 4_800 || endless.z !== -7_800 || endless.chunks !== 25) throw new Error(`far-coordinate streaming failed: ${JSON.stringify(endless)}`)
   await desktop.close()
-
-  const zhContext = await browser.newContext({ viewport: { width: 1280, height: 720 }, locale: 'zh-CN' })
-  const zhPage = await openGame(zhContext, errors)
-  await zhContext.close()
 
   const phone = await browser.newContext({ viewport: { width: 844, height: 390 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, locale: 'en-US' })
   const phonePage = await openGame(phone, errors)
   await phonePage.tap('[data-action="play"]')
   await phonePage.waitForSelector('[data-screen="hud"].is-active')
-  const catchButton = phonePage.locator('.catch-button')
-  if (!(await catchButton.isVisible())) throw new Error('mobile Catch button is not visible')
-  await phonePage.screenshot({ path: `${out}/05-mobile-fishing-hud.png` })
+  if (!(await phonePage.locator('.hunt-button').isVisible())) throw new Error('mobile hunt/pounce button is not visible')
+  if (!(await phonePage.locator('.sprint-button').isVisible())) throw new Error('mobile sprint button is not visible')
+  if (!(await phonePage.locator('.touch-stick').isVisible())) throw new Error('mobile movement stick is not visible')
+  if (!(await phonePage.locator('.minimap').isVisible())) throw new Error('mobile tracking map is not visible')
+  const mobileStart = await state(phonePage)
+  await phonePage.evaluate(() => window.__game.input.setTouchMove(0, 1))
+  await phonePage.waitForFunction(() => window.__game.game.run.distance > 0.5, null, { timeout: 15_000, polling: 100 })
+  await phonePage.evaluate(() => window.__game.input.setTouchMove(0, 0))
+  await phonePage.waitForTimeout(120)
+  const mobileAfter = await state(phonePage)
+  if (mobileAfter.pos.z >= mobileStart.pos.z - 0.1) throw new Error('touch movement did not move the bear')
   await phone.close()
 
   if (errors.length) throw new Error(`browser errors:\n  ${errors.join('\n  ')}`)
   await browser.close()
   cleanup()
-  console.log(`smoke: OK — bank movement, deliberate catch, paired blocks, algae damage, three lives, local best, English-only and touch Catch (${out}/)`)
+  console.log('smoke: OK — infinite-world map/tracks, desktop movement/speed ramp, pounce/honey, three-only danger outcomes, local best, pause/settings and mobile touch/hunt/sprint controls')
 } catch (error) {
   await fail(error?.message ?? String(error))
 }

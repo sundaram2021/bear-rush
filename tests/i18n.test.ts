@@ -4,12 +4,14 @@ import { detectLocale, resolveLocale } from '../src/engine/i18n'
 
 const required = [
   'game.title', 'game.tagline', 'menu.play', 'menu.settings', 'menu.retry', 'controls.title',
-  'controls.desktop', 'controls.touch', 'controls.goal', 'hud.fish', 'hud.score', 'hud.distance',
-  'hud.speed', 'pause.title', 'settings.title', 'settings.water', 'settings.effects', 'settings.mute',
-  'settings.privacy', 'results.title', 'results.fish', 'results.score', 'results.distance', 'results.time', 'results.best',
+  'controls.desktop', 'controls.touch', 'controls.goal', 'controls.hazards', 'controls.huntButton',
+  'hud.score', 'hud.food', 'hud.distance', 'weather.clear', 'weather.snow', 'pause.title',
+  'settings.title', 'settings.ambience', 'settings.effects', 'settings.mute', 'settings.privacy',
+  'results.title', 'results.food', 'results.score', 'results.distance', 'results.time', 'results.best',
+  'food.salmon', 'food.honey', 'food.fawn', 'food.deer', 'food.elk', 'food.moose',
 ]
 
-describe('English-only game copy', () => {
+describe('English-only mountain-hunt copy', () => {
   it('ignores browser and saved locale choices', () => {
     expect(detectLocale(['zh-CN', 'en'])).toBe('en')
     expect(detectLocale(['fr-FR'])).toBe('en')
@@ -17,8 +19,11 @@ describe('English-only game copy', () => {
     expect(resolveLocale(undefined, ['zh-CN'])).toBe('en')
   })
 
-  it('includes copy for the playable loop and all primary screens', () => {
+  it('includes all foods, only the requested dangers, controls and main screens', () => {
     for (const key of required) expect(en[key as keyof typeof en], key).toBeTruthy()
+    expect(en['controls.hazards']).toContain('poisonous food')
+    expect(en['controls.hazards']).toContain('trench')
+    expect(en['controls.hazards']).toContain('bear traps')
   })
 
   it('does not leave unresolved copy placeholders', () => {

@@ -3,42 +3,42 @@ import { CONFIG, DEFAULT_CONFIG } from './config'
 type ApplyMode = 'LIVE' | 'NEXT_RUN'
 type Control = { id: string; type: 'number'; category: string; label: string; description: string; unit: string; default: number; min: number; max: number; step: number; applyMode: ApplyMode; integrity: 'COSMETIC' | 'GAMEPLAY' }
 type Binding = { control: Control; read(): number; write(value: number): void }
-
 const bindings: Binding[] = []
+
 function number<S extends keyof typeof CONFIG>(section: S, key: keyof typeof CONFIG[S] & string,
-  label: string, min: number, max: number, step: number, unit: string, applyMode: ApplyMode = 'LIVE', integrity: 'COSMETIC' | 'GAMEPLAY' = 'GAMEPLAY'): void {
+  category: string, label: string, min: number, max: number, step: number, unit: string,
+  applyMode: ApplyMode = 'LIVE', integrity: 'COSMETIC' | 'GAMEPLAY' = 'GAMEPLAY'): void {
   const values = CONFIG[section] as Record<string, number>
   const defaults = DEFAULT_CONFIG[section] as Record<string, number>
-  bindings.push({ control: Object.freeze({ id: `${section}.${key}`, type: 'number', category: section === 'camera' ? 'Camera' : section === 'player' ? 'Bank-side fishing' : 'River encounter',
-    label, description: applyMode === 'NEXT_RUN' ? 'Applies when a new run starts.' : 'Updates this preview immediately.', unit, default: defaults[key], min, max, step, applyMode, integrity }),
-    read: () => values[key], write: value => { values[key] = value } })
+  bindings.push({
+    control: Object.freeze({ id: `${section}.${key}`, type: 'number', category, label,
+      description: applyMode === 'NEXT_RUN' ? 'Applies when the next hunt starts.' : 'Updates this preview immediately.',
+      unit, default: defaults[key], min, max, step, applyMode, integrity }),
+    read: () => values[key], write: value => { values[key] = value },
+  })
 }
 
-number('run', 'lives', 'Starting lives', 1, 5, 1, 'lives', 'NEXT_RUN')
-number('run', 'startSpeed', 'Starting current speed', 4, 12, 0.5, 'm/s', 'NEXT_RUN')
-number('run', 'speedRamp', 'Current speed increase', 0.01, 0.08, 0.005, 'm/s/s', 'NEXT_RUN')
-number('run', 'maxSpeed', 'Current speed cap', 8, 20, 0.5, 'm/s', 'NEXT_RUN')
-number('run', 'fishInterval', 'Initial fish arrival interval', 1, 4, 0.1, 's', 'NEXT_RUN')
-number('run', 'hazardInterval', 'Initial hazard arrival interval', 2, 7, 0.1, 's', 'NEXT_RUN')
-number('player', 'moveSpeed', 'Bank walking response', 2, 8, 0.25, 'm/s', 'LIVE')
-number('player', 'catchRangeX', 'Catch reach across the water', 2.5, 5.5, 0.1, 'm', 'LIVE')
-number('player', 'catchRangeZ', 'Catch timing window', 1.5, 4, 0.1, 'm', 'LIVE')
-number('camera', 'fov', 'Field of view', 46, 76, 1, '°', 'LIVE', 'COSMETIC')
-number('camera', 'follow', 'Camera ease', 2, 10, 0.25, '', 'LIVE', 'COSMETIC')
-number('camera', 'height', 'Camera height', 5, 11, 0.25, 'm', 'LIVE', 'COSMETIC')
+number('run', 'lives', 'Hunt rules', 'Starting lives', 1, 5, 1, 'lives', 'NEXT_RUN')
+number('run', 'baseSpeed', 'Hunt rules', 'Starting run speed', 3, 10, 0.2, 'm/s', 'NEXT_RUN')
+number('run', 'speedRamp', 'Hunt rules', 'Speed increase', 0.01, 0.12, 0.005, 'm/s/s', 'NEXT_RUN')
+number('run', 'maxSpeed', 'Hunt rules', 'Top speed', 8, 20, 0.5, 'm/s', 'NEXT_RUN')
+number('player', 'moveSpeed', 'Bear movement', 'Movement response', 3, 9, 0.2, 'm/s')
+number('player', 'acceleration', 'Bear movement', 'Acceleration', 8, 24, 1, 'm/s/s')
+number('player', 'slopeControlLoss', 'Bear movement', 'Steep-slope control loss', 0.2, 0.9, 0.02, '')
+number('camera', 'fov', 'Camera', 'Field of view', 46, 78, 1, '°', 'LIVE', 'COSMETIC')
+number('camera', 'follow', 'Camera', 'Follow smoothing', 2, 10, 0.2, '', 'LIVE', 'COSMETIC')
+number('camera', 'height', 'Camera', 'Follow height', 3, 7, 0.1, 'm', 'LIVE', 'COSMETIC')
 
-const byId = new Map(bindings.map(b => [b.control.id, b]))
-let requested = Object.fromEntries(bindings.map(b => [b.control.id, b.control.default]))
+const byId = new Map(bindings.map(binding => [binding.control.id, binding]))
+let requested = Object.fromEntries(bindings.map(binding => [binding.control.id, binding.control.default]))
 let unranked = false
-const isGameplayChanged = () => bindings.some(b => b.control.integrity === 'GAMEPLAY' && b.read() !== b.control.default)
-const valid = (v: Record<string, number>) => v['run.maxSpeed'] >= v['run.startSpeed']
-  && v['run.fishInterval'] >= CONFIG.run.fishIntervalFloor
-  && v['run.hazardInterval'] >= CONFIG.run.hazardIntervalFloor
+const isGameplayChanged = () => bindings.some(binding => binding.control.integrity === 'GAMEPLAY' && binding.read() !== binding.control.default)
+const valid = (values: Record<string, number>) => values['run.maxSpeed'] >= values['run.baseSpeed']
 
 export const tuning = {
   get unranked(): boolean { return unranked },
-  controls: Object.freeze(bindings.map(b => b.control)),
-  read() { return { requested: { ...requested }, active: Object.fromEntries(bindings.map(b => [b.control.id, b.read()])) } },
+  controls: Object.freeze(bindings.map(binding => binding.control)),
+  read() { return { requested: { ...requested }, active: Object.fromEntries(bindings.map(binding => [binding.control.id, binding.read()])) } },
   apply(patch: unknown): void {
     if (!patch || typeof patch !== 'object' || Array.isArray(patch)) throw new Error('Invalid patch')
     const entries = Object.entries(patch)
@@ -52,7 +52,7 @@ export const tuning = {
     const candidate = { ...requested, ...patch } as Record<string, number>
     const active = this.read().active
     for (const [id, value] of entries) if (byId.get(id)!.control.applyMode === 'LIVE') active[id] = value
-    if (!valid(candidate) || !valid(active)) throw new Error('Current speed cap must not be lower than starting speed')
+    if (!valid(candidate) || !valid(active)) throw new Error('Top speed must not be lower than starting speed')
     requested = candidate
     for (const [id, value] of entries) {
       const binding = byId.get(id)!
@@ -61,7 +61,7 @@ export const tuning = {
     unranked ||= isGameplayChanged()
   },
   activate(boundary: 'run'): void {
-    for (const b of bindings) if (b.control.applyMode === 'NEXT_RUN') b.write(requested[b.control.id])
+    for (const binding of bindings) if (binding.control.applyMode === 'NEXT_RUN') binding.write(requested[binding.control.id])
     unranked = boundary === 'run' ? isGameplayChanged() : unranked || isGameplayChanged()
   },
 }

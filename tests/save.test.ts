@@ -2,32 +2,41 @@ import { describe, expect, it } from 'vitest'
 import { defaultSave, parseSave, SAVE_KEY, SaveStore } from '../src/engine/save'
 
 describe('browser-local save', () => {
-  it('falls back to defaults for missing, corrupt, array, or foreign-version data', () => {
+  it('falls back to defaults for missing, corrupt, array or unknown-version data', () => {
     expect(parseSave(null)).toEqual(defaultSave())
     expect(parseSave('{nope')).toEqual(defaultSave())
     expect(parseSave('[]')).toEqual(defaultSave())
     expect(parseSave(JSON.stringify({ version: 1, bestScore: 800 }))).toEqual(defaultSave())
   })
 
+  it('migrates previous fish records to the new all-food best while retaining settings', () => {
+    const migrated = parseSave(JSON.stringify({ version: 2, bestScore: 340, bestFish: 6, musicVolume: 0.4, muted: true }))
+    expect(migrated.version).toBe(3)
+    expect(migrated.bestScore).toBe(340)
+    expect(migrated.bestCollected).toBe(6)
+    expect(migrated.musicVolume).toBe(0.4)
+    expect(migrated.muted).toBe(true)
+  })
+
   it('clamps settings and validates personal-best fields', () => {
-    const save = parseSave(JSON.stringify({ version: 2, musicVolume: 5, sfxVolume: -1, muted: true, quality: 'ultra', bestScore: 340.8, bestFish: -2, bestDistance: 44.6, bestTime: 'bad' }))
+    const save = parseSave(JSON.stringify({ version: 3, musicVolume: 5, sfxVolume: -1, muted: true, quality: 'ultra', bestScore: 340.8, bestCollected: -2, bestDistance: 44.6, bestTime: 'bad' }))
     expect(save.musicVolume).toBe(1)
     expect(save.sfxVolume).toBe(0)
     expect(save.muted).toBe(true)
     expect(save.quality).toBe('medium')
     expect(save.bestScore).toBe(340)
-    expect(save.bestFish).toBe(0)
+    expect(save.bestCollected).toBe(0)
     expect(save.bestDistance).toBe(44.6)
     expect(save.bestTime).toBe(0)
   })
 
-  it('saves and reloads settings and best-run statistics using the local key only', () => {
+  it('saves and reloads settings and best-run data under the local key only', () => {
     const memory = new Map<string, string>()
     const storage = { getItem: (key: string) => memory.get(key) ?? null, setItem: (key: string, value: string) => void memory.set(key, value) }
-    new SaveStore(storage).update({ musicVolume: 0.3, bestScore: 900, bestFish: 7, bestDistance: 122.5, bestTime: 16.2 })
+    new SaveStore(storage).update({ musicVolume: 0.3, bestScore: 900, bestCollected: 7, bestDistance: 122.5, bestTime: 16.2 })
     expect(JSON.parse(memory.get(SAVE_KEY)!).musicVolume).toBe(0.3)
     expect(new SaveStore(storage).data.bestScore).toBe(900)
-    expect(new SaveStore(storage).data.bestFish).toBe(7)
+    expect(new SaveStore(storage).data.bestCollected).toBe(7)
     expect(memory.size).toBe(1)
   })
 

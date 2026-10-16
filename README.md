@@ -1,8 +1,6 @@
-# Bear Rush: Salmon Hunt
+# Bear Rush: Endless Mountain Hunt
 
-A fully 3D browser wildlife game set in a forest valley. The bear stands on a riverbank and actively hunts salmon: fish swim downstream and leap into a short catch window; press a button at the right moment to swipe. Fish missed on a pass do not cost a life. The stream bends and rises/falls through the forest while current and fish speed gradually increase to a cap.
-
-The supplied bear-at-a-cascade photograph guides the mood and hunting scene, but is not a literal game background. The bear, fish, trees and environment still use prototype low-poly/procedural geometry. Final catalog-sourced 3D models are **not complete**: catalog access for the existing project returned a project-unbound error. No new generated models were created.
+A third-person browser game about a grizzly ranging through mountain forest to forage and hunt. The previous fixed board is replaced by a **deterministically streamed landscape**: walk in any direction and new alpine terrain, forest, river, rocks and ground cover are generated around the bear while distant chunks are released. There is no coordinate boundary or world-reset loop.
 
 ## Run locally
 
@@ -11,50 +9,61 @@ pnpm install
 pnpm dev -- --host 0.0.0.0 --port 3000
 pnpm typecheck
 pnpm test
-pnpm build     # TypeScript + Vite production build + size checks
-pnpm smoke     # desktop/mobile Playwright checks; saves screenshots in shots/
+pnpm build
+pnpm smoke
 ```
 
-Sound starts after the player's first gesture because browsers require an interaction to enable Web Audio.
+The environment and wildlife use local procedural Three.js geometry, shared instanced scenery, locally created material textures, atmospheric lighting/fog, moving water and clear-to-snowing weather. It is a naturalistic procedural 3D prototype, **not a photogrammetry/AAA asset production**: rigged, production-quality wildlife models and a reviewed art set have not been added. Browser Web Audio creates forest ambience, bear sounds, gait-timed footsteps, pounce, forage and hazard effects after the first user gesture.
 
-## Controls and rules
+## Controls
 
-- **Desktop:** A/D or Left/Right adjust footing toward/away from the water; W/S or Up/Down walk along the bank. Space or E swipes to catch a leaping fish. Escape/P pauses.
-- **Mobile:** use the left virtual stick to adjust the bear's footing and tap the large **Catch** button to swipe.
-- **Catch:** a deliberate, well-timed swipe is required when a salmon leaps within reach. Successful catches add fish and score; missed fish or a mistimed swipe cost no lives.
-- **Wood:** small floating blocks follow the winding river. Every distinct block contact adds one strike; the second strike removes one life and resets the 0/2 counter.
-- **Harmful algae:** one contact/eating event immediately removes one life. Algae is visually distinct from salmon.
-- **Lives:** start with three. There is no timer-based game over. The run ends only after the third life is lost.
-- **Difficulty:** river/fish pace rises smoothly and caps. Distance, survival time and local best are shown in the HUD/results.
+| Platform | Controls |
+|---|---|
+| Desktop | WASD / arrow keys move; mouse looks while pointer-locked; Shift sprints; Space / E pounces; Esc / P pauses. |
+| Touch | Left virtual stick moves; drag to look; Hunt pounces; Run sprints. |
+| Gamepad | Left stick moves; the shared action map supports sprint, hunt and pause. |
 
-## Privacy and audio
+The bear accelerates from a deliberate walk into a trot and gallop. The speed ceiling rises as the run continues; sprint briefly exceeds the current ceiling but drains a finite reserve, which recovers while released. Slope momentum reduces control. Footstep sounds are triggered from gait contacts and switch to a snowier step on snow-covered ground.
 
-No login, sign-up, server, online leaderboard, or analytics. Settings and personal best are stored only in this browser's local storage; they do not sync across devices. The game uses a quiet continuous rushing-water bed plus separate synthesized catch/bear, block-contact, algae and life-loss cues. Mute and water/effects volume controls are available. Visual cues are also provided so sound is never required to understand play.
+## Tracking and hunting
+
+The north-oriented map shows the bear, heading, river/trench landmarks and recent wildlife/food tracks within a **168 m** local tracking radius. A marker is a last-known location, not a live omniscient target; it moves only when the bear gets another sighting and fades out after **24 seconds**. Map codes: S salmon, H honey, F fawn, D deer, E elk and M moose.
+
+| Food | Base points |
+|---|---:|
+| Salmon | 120 |
+| Honey | 180 |
+| Fawn | 150 |
+| Deer | 260 |
+| Elk | 420 |
+| Moose | 650 |
+
+Wild animals are sparse, wary and species-specific. They notice the bear based on distance, wind-carried scent and movement noise, then flee with evasive turns. Keep up the chase to drain prey stamina; an animal can only be caught with a close, correctly timed pounce during its short exhaustion window. An early pounce misses, alerts the prey and gives it an escape opportunity. Sprinting continuously is not a reliable shortcut. Salmon follow the river; honey can be foraged on land. Successive food adds a short combo bonus.
+
+## Dangers
+
+**Only these three hazards can remove a life:** poisonous food, slipping from a mountain into the trench, and bear traps. The run starts with three lives and ends only when all are lost. Water, ordinary terrain, missed pounces and elapsed time do not remove lives.
+
+## Privacy and settings
+
+No login, sign-up, backend, online leaderboard or analytics. Settings and personal-best statistics stay in this browser's `localStorage` and do not sync across devices. If browser storage is disabled, the game remains playable for the current page session. Graphics quality, ambience/effects volume, mute and reduced camera shake are available in Settings.
 
 ## Code map
 
 | Path | Responsibility |
 |---|---|
-| `src/game/game.ts` | Fishing-run lifecycle, timed catch action, hazard spawning/contact, audio and UI hooks. |
-| `src/game/world.ts` | Layered forest, curved/undulating river path, banks, rocks, foam and foliage animation. |
-| `src/game/player.ts` | Bank-side bear placement, movement and catch/hit animation. |
-| `src/game/collectibles.ts` | Salmon downstream swimming, leap timing and explicit catch window. |
-| `src/game/obstacles.ts` | River-following small wood and algae, one-shot collision reporting. |
-| `src/game/rules.ts` | Fish score, current curve, three lives, two-block rule and immediate algae damage. |
-| `src/game/config.ts`, `src/game/tuning.ts` | Gameplay defaults and the preserved development-only Tweak bridge. |
-| `src/engine/audio.ts` | Quiet river ambience and synthesized catch, bear, block and algae sounds. |
-| `src/engine/save.ts` | Browser-local settings and personal-best record. |
-| `src/engine/input.ts`, `src/ui/touch.ts` | Keyboard/gamepad movement, Catch and touch controls. |
-| `src/ui/`, `src/styles/main.css`, `src/i18n/en.json` | English title/tutorial, fish/score/lives/wood HUD, touch control, settings and results. |
-| `tests/`, `scripts/smoke.mjs` | Rules, river-following hazards, tuning and real browser verification. |
+| `src/game/terrain.ts` | Global heightfield, chunk mesh generation, river/trench sampling and safe footing. |
+| `src/game/world.ts` | Seeded chunk streaming, local forest/rocks/ground cover, weather, snowfall and continuous river. |
+| `src/game/player.ts` | Speed-responsive quadruped gait, sprint stamina, pounce, momentum and unbounded movement. |
+| `src/game/food.ts` | Scarce wildlife, last-seen tracks, scent/noise alerting, pursuit fatigue and pounce eligibility. |
+| `src/game/models.ts` | Bear, wildlife, salmon, honey, poisonous forage and trap geometry/materials. |
+| `src/game/hazards.ts` | One-shot poisonous-food and bear-trap collisions. |
+| `src/game/game.ts` | Hunt lifecycle, chunk-facing world updates, scoring, collisions and gait-aligned audio. |
+| `src/ui/minimap.ts` | Local map rendering from shared world coordinates and aging tracks. |
+| `src/engine/audio.ts` | Local forest/water ambience, running, hunting and hazard effects. |
+| `src/engine/save.ts` | Browser-only settings and best-run schema/migration. |
+| `tests/`, `scripts/smoke.mjs` | Rules, terrain seams, pursuit, gait/stamina, streaming and desktop/mobile browser checks. |
 
-## Current verification
+## Verification
 
-- `pnpm typecheck`: passed.
-- `pnpm test`: passed, 36 tests.
-- `pnpm build`: passed, approx. 1.18 MB compressed JS/font/transfer-size report.
-- `pnpm smoke`: passed, desktop/mobile check for bank movement, deliberate fish catch, two separate wood strikes, algae damage, three-life end state, local best and English-only UI.
-
-## Credits
-
-Bundled ManusCC0 fonts and their license notices are retained. Runtime libraries: Three.js (MIT) and Rapier (Apache-2.0; retained in the starter dependency set).
+The follow-up is covered by `pnpm typecheck`, `pnpm test`, `pnpm build`, and `pnpm smoke`. Unit and browser tests check global terrain/chunk continuity, distant streaming, limited/fading tracks, missed versus exhaustion-window pounces, gait/stamina behavior, the exact three dangers, local score persistence, settings and mobile controls.
