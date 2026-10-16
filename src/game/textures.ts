@@ -70,3 +70,41 @@ export function createNaturalTexture(kind: NaturalTextureKind): THREE.CanvasText
   textures.set(kind, texture)
   return texture
 }
+
+
+export type AlpinePbrTextures = {
+  rockDiffuse: THREE.Texture
+  rockNormal: THREE.Texture
+  snowDiffuse: THREE.Texture
+  snowNormal: THREE.Texture
+}
+
+let alpinePbrTextures: AlpinePbrTextures | null | undefined
+
+/** Load bundled CC0 terrain maps; procedural canvases remain the fallback. */
+export function loadAlpinePbrTextures(): AlpinePbrTextures | null {
+  if (alpinePbrTextures !== undefined) return alpinePbrTextures
+  if (typeof document === 'undefined') {
+    alpinePbrTextures = null
+    return null
+  }
+  const loader = new THREE.TextureLoader()
+  const load = (name: string, colorSpace: THREE.ColorSpace): THREE.Texture => {
+    const texture = loader.load(`${import.meta.env.BASE_URL}assets/textures/${name}`, undefined, undefined, error => {
+      console.error(`Could not load local terrain texture ${name}`, error)
+    })
+    texture.colorSpace = colorSpace
+    texture.wrapS = THREE.RepeatWrapping
+    texture.wrapT = THREE.RepeatWrapping
+    texture.anisotropy = 8
+    texture.generateMipmaps = true
+    return texture
+  }
+  alpinePbrTextures = {
+    rockDiffuse: load('rocky_terrain_02_diff_2k.jpg', THREE.SRGBColorSpace),
+    rockNormal: load('rocky_terrain_02_nor_gl_2k.jpg', THREE.NoColorSpace),
+    snowDiffuse: load('snow_02_diff_2k.jpg', THREE.SRGBColorSpace),
+    snowNormal: load('snow_02_nor_gl_2k.jpg', THREE.NoColorSpace),
+  }
+  return alpinePbrTextures
+}

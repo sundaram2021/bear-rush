@@ -4,13 +4,14 @@
  *
  * Call `endFrame()` once per rendered frame after gameplay consumed edge-triggered presses.
  */
-export type Action = 'catch' | 'jump' | 'sprint' | 'dash' | 'pause' | 'confirm' | 'back' | 'interact'
+export type Action = 'catch' | 'jump' | 'sprint' | 'stalk' | 'dash' | 'pause' | 'confirm' | 'back' | 'interact'
 export type InputMethod = 'keyboard' | 'gamepad' | 'touch'
 
 const KEY_BINDINGS: Record<Action, string[]> = {
   catch: ['Space', 'KeyE'],
   jump: [],
   sprint: ['ShiftLeft', 'ShiftRight'],
+  stalk: ['ControlLeft', 'ControlRight'],
   dash: ['KeyF', 'KeyJ'],
   pause: ['Escape', 'KeyP'],
   confirm: ['Enter', 'NumpadEnter'],
@@ -18,7 +19,7 @@ const KEY_BINDINGS: Record<Action, string[]> = {
   interact: [],
 }
 const MOVE_KEYS = { up: ['KeyW', 'ArrowUp'], down: ['KeyS', 'ArrowDown'], left: ['KeyA', 'ArrowLeft'], right: ['KeyD', 'ArrowRight'] }
-const PAD_BINDINGS: Record<Action, number[]> = { catch: [0, 3], jump: [], sprint: [4, 10], dash: [2, 5, 7], pause: [9], confirm: [0], back: [1], interact: [] }
+const PAD_BINDINGS: Record<Action, number[]> = { catch: [0, 3], jump: [], sprint: [4, 10], stalk: [], dash: [2, 5, 7], pause: [9], confirm: [0], back: [1], interact: [] }
 
 export class Input {
   /** Movement intent in [-1, 1]: x moves toward/away from the water; y walks along the bank. */

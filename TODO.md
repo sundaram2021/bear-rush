@@ -1,22 +1,22 @@
-# Bear Rush — Follow-up status
+# Bear Rush — health and hunt reliability update
 
-## Implemented and verified
+## Requested gameplay outcomes
 
-- [x] Removed the fixed world slab and player edge clamp. Global terrain, river/trench sampling, safe footing and seeded terrain/forest chunks work at distant positive and negative coordinates.
-- [x] Streamed the 5×5 nearby chunk window as the bear travels and disposed distant terrain/water buffers; scenery instances and shared materials keep draw calls and assets bounded.
-- [x] Added a north-oriented minimap with bear heading, river/trench landmarks, nearby species markers, a finite 168 m range and 24-second track fade.
-- [x] Made prey cautious and difficult to catch: movement noise/wind-carried scent affect detection, species flee differently, stamina depletes only while pursued and a close pounce must land during a short exhaustion window. Early pounces miss and give prey a recovery/escape window.
-- [x] Added short sprint stamina/recovery, a speed-responsive walk/trot/gallop gait, paired footfall timing, body/head response and sound events aligned to contacts.
-- [x] Preserved six food types and scoring, exactly three life-loss hazards, desktop/touch/gamepad controls, and browser-local-only settings/best runs.
-- [x] Added tests for far-world chunking/seams, distant safe terrain, track fading, early versus exhaustion-window pounces, gait/stamina and mobile/desktop browser flow.
-- [x] Passed `pnpm typecheck`, `pnpm test` (48 tests), `pnpm build`, `pnpm smoke`, and `git diff --check` before commit.
-- [x] Updated README and the same open pull request branch `feat/realistic-mountain-forest-hunt` / PR #2.
+- [x] Remove the extra-life/heart model. Runs begin at 100% health; poisonous food, bear traps and trench falls reduce the single health pool; reaching 0% ends the hunt without resetting health or continuing with spare lives.
+- [x] Ensure salmon, honey, fawn, deer, elk and moose are all seeded as local leads on a new run. Rotate the six species through later spawn opportunities.
+- [x] Preserve stalk, wind/noise awareness, species-specific stamina and pursuit. Allow an exhausted animal to be caught by a committed close pounce, including a pounce that sweeps across it between frames; reject an early or misaligned pounce.
+- [x] Show the hunt-ready cue for nearby exhausted prey and play a brief bear capture reaction only after a successful takedown.
+- [x] Keep the endless world, minimap, local-only saves and exactly three damage sources.
+- [x] Passed `pnpm typecheck`, `pnpm test` (58 tests), `pnpm build`, and `pnpm smoke` (desktop/mobile), reviewed the diff, and pushed the update to the existing PR #3.
 
-## Remaining visual limitation
+## Visual quality still below the requested bar
 
-This update improves world continuity, map usability, gameplay difficulty, and the bear's animation logic. It remains a procedural 3D build, not photogrammetry or a production wildlife-asset set. A literal photorealistic/AAA presentation still needs reviewed rigged bear, prey and environment art assets; no paid, unreviewed or license-unclear models were added.
+- [ ] Replace the procedural bear, fawn, deer, elk, moose and salmon with suitable locally bundled photorealistic models and validated animations. Current wildlife meshes are procedural and are not photorealistic.
+- [ ] Replace procedural close forest/rock dressing with optimized scanned assets while preserving streamed infinite-world performance. Existing CC0 fir-tree packages are too large to ship unoptimized.
+- [ ] Add model loading, animation mapping, scale/orientation validation, GPU-resource disposal, and explicit load-failure handling when suitable assets are legitimately available.
 
-## Product boundaries
+## Source and delivery constraints
 
-- No logins, accounts, backend persistence, online features or analytics.
-- The player can keep travelling; only the nearby scenery chunk window remains resident.
+- PR #2 is merged. PR #3 remains open on `feat/photorealistic-wildlife-hunt`; commit only these changes to that PR.
+- Do not purchase assets or generate AI models in this pass. Use only verified freely redistributable assets if any are integrated later, retaining author/source/license/attribution records.
+- `docs/art-sourcing.md` documents candidate availability, licensing and technical fit. `docs/hunting-behavior.md` cites the behavioral sources and distinguishes compressed game timing from biological reality.

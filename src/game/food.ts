@@ -55,15 +55,20 @@ export class FoodField {
     })
   }
 
-  /** A first expedition has a few distant leads, never a ring of waiting animals. */
+  /** Seed the local map with every food species, spread through a forward viewing fan. */
   spawnInitial(bear: THREE.Vector3, terrain: Terrain): void {
     this.reset()
     this.spawnAround('salmon', bear, terrain)
     this.spawnAround('honey', bear, terrain)
-    this.spawnAround(this.randomPrey(), bear, terrain)
+    const species: PreyKind[] = ['fawn', 'deer', 'elk', 'moose']
+    const center = -Math.PI / 2
+    species.forEach((kind, index) => {
+      const spread = (index / (species.length - 1) * 2 - 1) * CONFIG.hunt.initialPreyFanHalfAngle
+      this.spawnAround(kind, bear, terrain, center + spread, CONFIG.hunt.initialPreyRadiusScale)
+    })
   }
 
-  spawnAround(kind: FoodKind, bear: THREE.Vector3, terrain: Terrain): boolean {
+  spawnAround(kind: FoodKind, bear: THREE.Vector3, terrain: Terrain, preferredBearing?: number, radiusScale = 1): boolean {
     if (kind === 'salmon') {
       for (let attempt = 0; attempt < 24; attempt += 1) {
         const z = bear.z + 28 + this.random() * 78
@@ -74,10 +79,12 @@ export class FoodField {
       }
       return false
     }
-    const min = kind === 'honey' ? CONFIG.hunt.spawnMinRadius * 0.82 : CONFIG.hunt.spawnMinRadius
-    const max = kind === 'honey' ? CONFIG.hunt.spawnMaxRadius * 0.78 : CONFIG.hunt.spawnMaxRadius
+    const min = (kind === 'honey' ? CONFIG.hunt.spawnMinRadius * 0.82 : CONFIG.hunt.spawnMinRadius) * radiusScale
+    const max = (kind === 'honey' ? CONFIG.hunt.spawnMaxRadius * 0.78 : CONFIG.hunt.spawnMaxRadius) * radiusScale
     for (let attempt = 0; attempt < 48; attempt += 1) {
-      const angle = this.random() * Math.PI * 2
+      const angle = preferredBearing === undefined
+        ? this.random() * Math.PI * 2
+        : preferredBearing + (this.random() - 0.5) * 0.24
       const radius = min + this.random() * (max - min)
       const x = bear.x + Math.cos(angle) * radius
       const z = bear.z + Math.sin(angle) * radius
@@ -85,10 +92,21 @@ export class FoodField {
       this.spawn(kind, new THREE.Vector3(x, terrain.heightAt(x, z), z), terrain)
       return true
     }
+    if (preferredBearing !== undefined) {
+      for (let attempt = 0; attempt < 48; attempt += 1) {
+        const angle = this.random() * Math.PI * 2
+        const radius = min + this.random() * (max - min)
+        const x = bear.x + Math.cos(angle) * radius
+        const z = bear.z + Math.sin(angle) * radius
+        if (!terrain.isSafeSurface(x, z) || Math.abs(x - terrain.riverX(z)) < 8) continue
+        this.spawn(kind, new THREE.Vector3(x, terrain.heightAt(x, z), z), terrain)
+        return true
+      }
+    }
     return false
   }
 
-  step(dt: number, bear: THREE.Vector3, terrain: Terrain, wind = new THREE.Vector3(0, 0, 1), bearSpeed = 0): void {
+  step(dt: number, bear: THREE.Vector3, terrain: Terrain, wind = new THREE.Vector3(0, 0, 1), bearSpeed = 0, stalking = false, bearForward?: THREE.Vector3): void {
     const windDirection = wind.clone().setY(0).normalize()
     const remove: FoodActor[] = []
     for (const actor of this.actors) {
@@ -130,8 +148,9 @@ export class FoodField {
       const downwind = new THREE.Vector2(actor.root.position.x - bear.x, actor.root.position.z - bear.z)
         .normalize().dot(new THREE.Vector2(windDirection.x, windDirection.z))
       const scentBoost = downwind > 0.45 ? 20 : downwind < -0.45 ? -7 : 0
-      const noiseBoost = THREE.MathUtils.clamp(bearSpeed * 1.25, 0, 24)
-      const detection = CONFIG.hunt.awareness[kind] + scentBoost + noiseBoost
+      const noiseBoost = THREE.MathUtils.clamp(bearSpeed * (stalking ? 0.42 : 1.25), 0, 24)
+      const visualAwareness = CONFIG.hunt.awareness[kind] * (stalking ? CONFIG.hunt.stalkAwarenessMultiplier : 1)
+      const detection = visualAwareness + scentBoost + noiseBoost
 
       if (actor.state === 'roaming' && distance < detection) {
         actor.state = 'alert'
@@ -143,16 +162,20 @@ export class FoodField {
         if (actor.alertTimer <= 0) actor.state = 'fleeing'
       }
 
-      const chased = distance < CONFIG.hunt.chaseRadius
+      const pursuitHeading = bearForward && new THREE.Vector2(bearForward.x, bearForward.z).normalize()
+      const toPrey = new THREE.Vector2(actor.root.position.x - bear.x, actor.root.position.z - bear.z).normalize()
+      const bearingTowardPrey = !!pursuitHeading && pursuitHeading.dot(toPrey) > 0.2
+      const chased = distance < CONFIG.hunt.chaseRadius && bearSpeed > 0.75 && bearingTowardPrey
       if (actor.state === 'fleeing') {
         if (chased) actor.stamina = Math.max(0, actor.stamina - dt / CONFIG.hunt.chaseDuration[kind])
         else actor.stamina = Math.min(1, actor.stamina + dt * 0.035)
-        if (distance > CONFIG.hunt.chaseRadius * 1.45 && actor.stamina > 0.72) {
+        if (distance > CONFIG.hunt.escapeRadius && actor.stamina > 0.72) {
           actor.state = 'roaming'
           actor.stamina = Math.min(1, actor.stamina + dt * 0.08)
         }
-        if (actor.stamina <= 0.001) {
+        if (actor.stamina <= CONFIG.hunt.exhaustionThreshold) {
           actor.state = 'exhausted'
+          actor.stamina = CONFIG.hunt.exhaustionThreshold
           actor.exhaustedTimer = CONFIG.hunt.exhaustedWindow[kind]
         }
       } else if (actor.state === 'exhausted') {
@@ -202,23 +225,40 @@ export class FoodField {
     }
   }
 
-  collectNearby(bear: THREE.Vector3, pouncing: boolean): FoodContact | null {
+  collectNearby(bear: THREE.Vector3, pouncing: boolean, bearForward = new THREE.Vector3(0, 0, -1), bearSpeed = 0, sweepStart = bear): FoodContact | null {
     let nearest: FoodActor | undefined
     let best = Number.POSITIVE_INFINITY
+    const moveX = bear.x - sweepStart.x
+    const moveY = bear.y - sweepStart.y
+    const moveZ = bear.z - sweepStart.z
+    const moveLengthSq = moveX * moveX + moveY * moveY + moveZ * moveZ
     for (const actor of this.actors) {
-      const dx = actor.root.position.x - bear.x
-      const dz = actor.root.position.z - bear.z
-      const dy = actor.root.position.y - (bear.y + 0.6)
+      const along = moveLengthSq > 0.0001
+        ? THREE.MathUtils.clamp(((actor.root.position.x - sweepStart.x) * moveX
+          + (actor.root.position.y - sweepStart.y) * moveY
+          + (actor.root.position.z - sweepStart.z) * moveZ) / moveLengthSq, 0, 1)
+        : 1
+      const closestX = sweepStart.x + moveX * along
+      const closestY = sweepStart.y + moveY * along
+      const closestZ = sweepStart.z + moveZ * along
+      const dx = actor.root.position.x - closestX
+      const dz = actor.root.position.z - closestZ
+      const dy = actor.root.position.y - (closestY + 0.6)
       const distanceSq = dx * dx + dz * dz + dy * dy * 0.12
-      const range = actor.kind === 'honey' ? 2.15 : actor.kind === 'salmon' ? 2.75 : 2.35
+      const range = actor.kind === 'honey' ? 2.15 : actor.kind === 'salmon' ? 2.75 : CONFIG.player.captureRadius
       if (distanceSq >= range * range || distanceSq >= best) continue
+      const approach = moveLengthSq > 0.0001
+        ? new THREE.Vector3(moveX, 0, moveZ)
+        : new THREE.Vector3(actor.root.position.x - bear.x, 0, actor.root.position.z - bear.z)
+      const facing = approach.lengthSq() > 0.0001 && approach.normalize().dot(bearForward) >= CONFIG.player.pounceFacingDot
+      const committedPounce = pouncing && bearSpeed >= CONFIG.player.pounceMinSpeed && facing
       if (isPrey(actor.kind)) {
         if (!pouncing) continue
-        if (actor.state !== 'exhausted' || actor.exhaustedTimer <= 0) {
+        if (actor.state !== 'exhausted' || actor.exhaustedTimer <= 0 || !committedPounce) {
           if (actor.missedTimer <= 0) {
-            actor.missedTimer = 1.7
+            actor.missedTimer = 1.8
             actor.state = 'fleeing'
-            actor.stamina = Math.min(1, actor.stamina + 0.24)
+            actor.stamina = Math.min(1, actor.stamina + 0.28)
             actor.exhaustedTimer = 0
             actor.velocity.add(new THREE.Vector3(dx, 0, dz).normalize().multiplyScalar(2.7))
             this.missedHunt = actor.kind
@@ -226,7 +266,7 @@ export class FoodField {
           continue
         }
       }
-      if (actor.kind === 'salmon' && !pouncing) continue
+      if (actor.kind === 'salmon' && !committedPounce) continue
       nearest = actor
       best = distanceSq
     }
@@ -235,6 +275,18 @@ export class FoodField {
     this.group.remove(nearest.root)
     this.actors = this.actors.filter(actor => actor !== nearest)
     return contact
+  }
+
+  /** Surface a concise prompt when a winded animal is close enough to finish the hunt. */
+  huntOpportunity(bear: THREE.Vector3): PreyKind | null {
+    let candidate: FoodActor | undefined
+    let best = CONFIG.hunt.huntReadyRadius
+    for (const actor of this.actors) {
+      if (!isPrey(actor.kind) || actor.state !== 'exhausted' || actor.exhaustedTimer <= 0) continue
+      const distance = Math.hypot(actor.root.position.x - bear.x, actor.root.position.z - bear.z)
+      if (distance <= best) { candidate = actor; best = distance }
+    }
+    return candidate && isPrey(candidate.kind) ? candidate.kind : null
   }
 
   tracks(bear: THREE.Vector3): WildlifeTrack[] {
@@ -289,14 +341,11 @@ export class FoodField {
     legs.forEach((leg, index) => {
       leg.rotation.x = Math.sin(phase + phases[index]) * stride * (actor.state === 'exhausted' ? 0.18 : 0.54)
     })
-    actor.rig!.head.rotation.x = actor.state === 'alert' ? -0.1 : actor.state === 'exhausted' ? 0.07 : Math.sin(actor.phase * 2.6) * 0.025
-    actor.rig!.body.position.y = Math.abs(Math.sin(phase * 2)) * stride * 0.032
+    actor.rig!.head.rotation.x = actor.state === 'alert' ? -0.1 : actor.state === 'exhausted' ? 0.19 : Math.sin(actor.phase * 2.6) * 0.025
+    actor.rig!.body.position.y = Math.abs(Math.sin(phase * 2)) * stride * 0.032 - (actor.state === 'exhausted' ? 0.075 : 0)
+    actor.rig!.body.rotation.z = actor.state === 'exhausted' ? Math.sin(actor.phase * 4.1) * 0.035 : 0
     actor.rig!.body.rotation.x = actor.state === 'fleeing' ? -0.025 : 0
     void dt
   }
 
-  private randomPrey(): PreyKind {
-    const roll = this.random()
-    return roll < 0.24 ? 'fawn' : roll < 0.58 ? 'deer' : roll < 0.85 ? 'elk' : 'moose'
-  }
 }

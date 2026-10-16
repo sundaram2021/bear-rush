@@ -11,6 +11,7 @@ export class Player {
   readonly velocity = new THREE.Vector3()
   private pounceTimer = 0
   private pounceCooldown = 0
+  private captureTimer = 0
   private hitTimer = 0
   private gait = 0
   private strideBlend = 0
@@ -20,6 +21,7 @@ export class Player {
   private speedValue = 0
   private staminaValue = 1
   private sprintingValue = false
+  private stalkingValue = false
 
   constructor(private readonly world: World) {
     this.rig = createBear()
@@ -32,6 +34,8 @@ export class Player {
   get safePosition(): THREE.Vector3 { return this.lastSafe.clone() }
   get stamina(): number { return this.staminaValue }
   get sprinting(): boolean { return this.sprintingValue }
+  get stalking(): boolean { return this.stalkingValue }
+  get forward(): THREE.Vector3 { return new THREE.Vector3(0, 0, -1).applyQuaternion(this.root.quaternion).setY(0).normalize() }
 
   consumeFootfalls(): number {
     const count = this.pendingFootfalls
@@ -39,22 +43,26 @@ export class Player {
     return count
   }
 
-  step(dt: number, x: number, y: number, speedLimit: number, sprint: boolean, cameraYaw: number, pounce: boolean): boolean {
+  step(dt: number, x: number, y: number, speedLimit: number, sprint: boolean, cameraYaw: number, pounce: boolean, stalk = false): boolean {
     this.pounceCooldown = Math.max(0, this.pounceCooldown - dt)
     this.pounceTimer = Math.max(0, this.pounceTimer - dt)
+    this.captureTimer = Math.max(0, this.captureTimer - dt)
     this.hitTimer = Math.max(0, this.hitTimer - dt)
     const forward = new THREE.Vector3(-Math.sin(cameraYaw), 0, -Math.cos(cameraYaw))
     const right = new THREE.Vector3(Math.cos(cameraYaw), 0, -Math.sin(cameraYaw))
     const intent = right.multiplyScalar(x).add(forward.multiplyScalar(y))
-    if (intent.lengthSq() > 1) intent.normalize()
+    const movementStrength = intent.length()
+    if (movementStrength > 1) intent.normalize()
     const oldGround = this.world.terrain.sample(this.position.x, this.position.z)
     const slopeControl = THREE.MathUtils.clamp(1 - oldGround.slope * CONFIG.player.slopeControlLoss, 0.3, 1)
-    const moving = intent.lengthSq() > 0.001
-    this.sprintingValue = sprint && moving && this.staminaValue > 0.015
+    const moving = movementStrength > 0.001
+    this.stalkingValue = moving && (stalk || movementStrength < CONFIG.player.analogStalkThreshold)
+    this.sprintingValue = sprint && moving && this.staminaValue > 0.015 && !this.stalkingValue
     if (this.sprintingValue) this.staminaValue = Math.max(0, this.staminaValue - dt / CONFIG.player.sprintCapacity)
     else this.staminaValue = Math.min(1, this.staminaValue + dt * CONFIG.player.sprintRecovery)
     const tunedSpeed = speedLimit * (CONFIG.player.moveSpeed / 6.6)
-    const limit = Math.min(CONFIG.run.maxSpeed * 1.12, tunedSpeed * (this.sprintingValue ? CONFIG.run.sprintMultiplier : 1))
+    const pace = this.stalkingValue ? CONFIG.player.stalkMultiplier : this.sprintingValue ? CONFIG.run.sprintMultiplier : 1
+    const limit = Math.min(CONFIG.run.maxSpeed * 1.12, tunedSpeed * pace)
     const goal = intent.multiplyScalar(limit * slopeControl)
     const response = moving ? CONFIG.player.acceleration : CONFIG.player.acceleration * 0.48
     const smoothing = 1 - Math.exp(-response * dt)
@@ -74,7 +82,7 @@ export class Player {
     }
 
     let pounceStarted = false
-    if (pounce && this.pounceCooldown <= 0 && this.speedValue > 2.1) {
+    if (pounce && this.pounceCooldown <= 0 && this.speedValue > CONFIG.player.pounceStartSpeed) {
       const facing = this.velocity.lengthSq() > 0.15 ? this.velocity.clone().setY(0).normalize() : forward
       this.velocity.addScaledVector(facing, CONFIG.player.pounceBoost)
       this.pounceTimer = CONFIG.player.pounceDuration
@@ -132,9 +140,11 @@ export class Player {
     })
     const bounce = Math.abs(Math.sin(this.gait * (gait === 'walk' ? 1 : 2))) * this.strideBlend
     const impact = this.pounceTimer > 0 ? Math.sin((1 - this.pounceTimer / CONFIG.player.pounceDuration) * Math.PI) : 0
+    const captureProgress = 1 - this.captureTimer / 0.62
+    const captureDip = this.captureTimer > 0 ? Math.sin(captureProgress * Math.PI) : 0
     this.rig.body.position.y = Math.sin(time * 1.1) * 0.012 + bounce * (gait === 'gallop' ? 0.11 : 0.045) + impact * 0.055
-    this.rig.body.rotation.x = this.pounceTimer > 0 ? -impact * 0.22 : THREE.MathUtils.damp(this.rig.body.rotation.x, gait === 'gallop' ? -0.035 : 0, 4, dt)
-    this.rig.head.rotation.x = -this.rig.body.rotation.x * 0.48 + Math.sin(this.gait * 0.5) * moving * 0.035 - impact * 0.1
+    this.rig.body.rotation.x = this.captureTimer > 0 ? -captureDip * 0.3 : this.pounceTimer > 0 ? -impact * 0.22 : THREE.MathUtils.damp(this.rig.body.rotation.x, gait === 'gallop' ? -0.035 : 0, 4, dt)
+    this.rig.head.rotation.x = -this.rig.body.rotation.x * 0.48 + Math.sin(this.gait * 0.5) * moving * 0.035 - impact * 0.1 - captureDip * 0.12
     this.rig.head.rotation.z = Math.sin(this.gait * 0.5 + 1) * moving * 0.024
     if (this.hitTimer > 0) {
       const blink = Math.floor(time * 13) % 2 === 0
@@ -147,6 +157,13 @@ export class Player {
   }
 
   hit(): void { this.hitTimer = 0.68 }
+
+  capture(): void {
+    this.pounceTimer = 0
+    this.captureTimer = 0.62
+    this.velocity.multiplyScalar(0.24)
+    this.speedValue = this.velocity.length()
+  }
 
   respawn(): void {
     this.position.copy(this.lastSafe)
@@ -169,6 +186,7 @@ export class Player {
     this.rig.legs.forEach(leg => leg.rotation.set(0, 0, 0))
     this.pounceTimer = 0
     this.pounceCooldown = 0
+    this.captureTimer = 0
     this.hitTimer = 0
     this.gait = 0
     this.lastFootCycle.fill(-1)
@@ -177,5 +195,6 @@ export class Player {
     this.speedValue = 0
     this.staminaValue = 1
     this.sprintingValue = false
+    this.stalkingValue = false
   }
 }

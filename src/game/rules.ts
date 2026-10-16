@@ -1,4 +1,5 @@
 import { CONFIG, FOOD_KINDS, type FoodKind } from './config'
+
 export type RunPhase = 'playing' | 'lost'
 export type LoseReason = 'poison' | 'trap' | 'fall'
 export type RunState = {
@@ -6,7 +7,7 @@ export type RunState = {
   phase: RunPhase
   loseReason?: LoseReason
   score: number
-  lives: number
+  health: number
   elapsed: number
   distance: number
   collected: number
@@ -17,7 +18,7 @@ export type RunState = {
 
 export function createRun(): RunState {
   return {
-    unranked: false, phase: 'playing', score: 0, lives: CONFIG.run.lives,
+    unranked: false, phase: 'playing', score: 0, health: 100,
     elapsed: 0, distance: 0, collected: 0, combo: 0, comboTimer: 0,
     tally: Object.fromEntries(FOOD_KINDS.map(kind => [kind, 0])) as Record<FoodKind, number>,
   }
@@ -54,13 +55,20 @@ export function eatFood(state: RunState, kind: FoodKind): { state: RunState; poi
   }
 }
 
-/** Poison, traps and trench falls each cost exactly one life; no other reason is supported. */
-export function loseLife(state: RunState, reason: LoseReason): { state: RunState; lifeLost: boolean } {
-  if (state.phase !== 'playing') return { state, lifeLost: false }
-  const lives = Math.max(0, state.lives - 1)
-  const next: RunState = { ...state, lives, combo: 0, comboTimer: 0 }
-  return {
-    state: lives === 0 ? { ...next, phase: 'lost', loseReason: reason } : next,
-    lifeLost: true,
+/** The three hazards chip a single health pool; 0% ends the run. */
+export function applyDamage(state: RunState, amount: number, reason: LoseReason): { state: RunState; healthLost: number; gameOver: boolean } {
+  if (state.phase !== 'playing' || !Number.isFinite(amount)) return { state, healthLost: 0, gameOver: false }
+  const damage = Math.min(100, Math.max(0, Math.round(amount)))
+  if (damage === 0) return { state, healthLost: 0, gameOver: false }
+  const healthLost = Math.min(state.health, damage)
+  const health = Math.max(0, state.health - damage)
+  const gameOver = health === 0
+  const next: RunState = {
+    ...state,
+    health,
+    combo: 0,
+    comboTimer: 0,
+    ...(gameOver ? { phase: 'lost' as const, loseReason: reason } : {}),
   }
+  return { state: next, healthLost, gameOver }
 }

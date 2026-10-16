@@ -14,6 +14,7 @@ pnpm smoke
 ```
 
 The environment and wildlife use local procedural Three.js geometry, shared instanced scenery, locally created material textures, atmospheric lighting/fog, moving water and clear-to-snowing weather. It is a naturalistic procedural 3D prototype, **not a photogrammetry/AAA asset production**: rigged, production-quality wildlife models and a reviewed art set have not been added. Browser Web Audio creates forest ambience, bear sounds, gait-timed footsteps, pounce, forage and hazard effects after the first user gesture.
+The terrain now also bundles local **CC0 2K PBR diffuse and normal maps** for rocky ground and snow from Poly Haven; runtime rendering does not fetch them from a third party. This improves the landscape surface only—the bear and wildlife remain procedural and do not yet meet a photoreal wildlife-art bar. See [`docs/art-sourcing.md`](docs/art-sourcing.md) for evaluated sources and the remaining model gap.
 
 ## Controls
 
@@ -23,7 +24,7 @@ The environment and wildlife use local procedural Three.js geometry, shared inst
 | Touch | Left virtual stick moves; drag to look; Hunt pounces; Run sprints. |
 | Gamepad | Left stick moves; the shared action map supports sprint, hunt and pause. |
 
-The bear accelerates from a deliberate walk into a trot and gallop. The speed ceiling rises as the run continues; sprint briefly exceeds the current ceiling but drains a finite reserve, which recovers while released. Slope momentum reduces control. Footstep sounds are triggered from gait contacts and switch to a snowier step on snow-covered ground.
+The bear accelerates from a deliberate walk into a trot and gallop. The speed ceiling rises as the run continues. Hold **Ctrl** to stalk at a slower, quieter pace; on touch, use a light movement-stick input. Wind and movement noise affect how soon prey notices. Sprint is a short burst, its reserve takes meaningful time to recover, and slope momentum reduces control. Footstep sounds follow gait contacts and change on snow.
 
 ## Tracking and hunting
 
@@ -38,11 +39,11 @@ The north-oriented map shows the bear, heading, river/trench landmarks and recen
 | Elk | 420 |
 | Moose | 650 |
 
-Wild animals are sparse, wary and species-specific. They notice the bear based on distance, wind-carried scent and movement noise, then flee with evasive turns. Keep up the chase to drain prey stamina; an animal can only be caught with a close, correctly timed pounce during its short exhaustion window. An early pounce misses, alerts the prey and gives it an escape opportunity. Sprinting continuously is not a reliable shortcut. Salmon follow the river; honey can be foraged on land. Successive food adds a short combo bonus.
+Wild animals are sparse, wary and species-specific. Each new hunt seeds salmon, honey, fawn, deer, elk and moose as leads in the local area; later spawn opportunities rotate through all six. They notice the bear based on distance, wind-carried scent and movement noise, then flee with evasive turns. The map's wind arrow shows scent flow; approach prey from the opposite, upwind direction. Prey only tires while the bear actively keeps close and faces into the chase; losing the chase lets it recover and escape. A healthy animal cannot be contact-caught: a hunt requires sustained pursuit, a visible exhaustion cue, close range and a committed moving pounce. Pounce contact is checked along the bear's movement between frames, reducing near-misses at speed. A miss alerts the prey, restores some stamina and creates a brief recovery opportunity before another attempt. Fawn, deer, elk and moose differ in awareness, speed and endurance. Salmon follow the river; honey can be foraged on land. Successive food adds a short combo bonus.
 
 ## Dangers
 
-**Only these three hazards can remove a life:** poisonous food, slipping from a mountain into the trench, and bear traps. The run starts with three lives and ends only when all are lost. Water, ordinary terrain, missed pounces and elapsed time do not remove lives.
+**Only these three hazards can damage the bear:** poisonous food removes 36 health points, traps remove 44, and trench-fall damage starts at 42 and rises with running speed (capped at 68). The health bar turns amber/red as it drops. Health is a single percentage pool; at 0%, the hunt ends immediately. There are no hearts, extra lives, health resets or passive regeneration. Hits briefly stagger the bear, and fall damage is larger at speed. Hazards appear in a forward arc roughly 20–44 m ahead every 5.2–8.6 seconds; this interval tightens as the hunt continues, but players can see and dodge them. Water, ordinary terrain, missed pounces and elapsed time do not cause damage.
 
 ## Privacy and settings
 
@@ -66,4 +67,4 @@ No login, sign-up, backend, online leaderboard or analytics. Settings and person
 
 ## Verification
 
-The follow-up is covered by `pnpm typecheck`, `pnpm test`, `pnpm build`, and `pnpm smoke`. Unit and browser tests check global terrain/chunk continuity, distant streaming, limited/fading tracks, missed versus exhaustion-window pounces, gait/stamina behavior, the exact three dangers, local score persistence, settings and mobile controls.
+The follow-up is covered by `pnpm typecheck`, `pnpm test`, `pnpm build`, and `pnpm smoke`. Unit and browser tests check global terrain/chunk continuity, distant streaming, limited/fading tracks, all six initial food species, missed versus exhaustion-window and swept pounces, gait/stamina behavior, percentage health with immediate zero-health game over, the exact three damage sources, local score persistence, settings and mobile controls.

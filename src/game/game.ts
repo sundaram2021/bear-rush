@@ -3,19 +3,19 @@ import type { Audio } from '../engine/audio'
 import type { Input } from '../engine/input'
 import type { Renderer } from '../engine/renderer'
 import type { Quality } from '../engine/save'
-import { CONFIG, FOOD_LABELS } from './config'
+import { CONFIG, FOOD_KINDS, FOOD_LABELS } from './config'
 import { Effects } from './fx'
 import { FoodField, type WildlifeTrack } from './food'
 import { HazardField } from './hazards'
 import { Player } from './player'
-import { createRun, eatFood, loseLife, speedCap, tick, type LoseReason, type RunState } from './rules'
+import { applyDamage, createRun, eatFood, speedCap, tick, type LoseReason, type RunState } from './rules'
 import { tuning } from './tuning'
 import { World } from './world'
 import type { Terrain } from './terrain'
 
 export type Mode = 'attract' | 'playing' | 'paused' | 'ended'
 export type Hint = 'move' | 'hunt' | 'dangers' | null
-export type MapSnapshot = { x: number; z: number; heading: number; radius: number; terrain: Terrain; tracks: WildlifeTrack[] }
+export type MapSnapshot = { x: number; z: number; heading: number; radius: number; wind: { x: number; z: number }; terrain: Terrain; tracks: WildlifeTrack[]; huntReady: keyof typeof FOOD_LABELS | null }
 export type GameHooks = {
   popup(text: string, screen: { x: number; y: number }, kind: 'score' | 'hurt'): void
   hurt(): void
@@ -37,7 +37,8 @@ export class Game {
   private readonly fx = new Effects()
   private time = 0
   private nextFood = CONFIG.hunt.foodSpawnMinSeconds
-  private nextHazard = 7
+  private foodCursor = 2
+  private nextHazard = CONFIG.hazards.initialDelay
   private tutorialTimer = 0
   private recoveryTimer = 0
   private invulnerabilityTimer = 0
@@ -63,8 +64,10 @@ export class Game {
   get speedLimit(): number { return speedCap(this.run.elapsed) }
   get weather(): 'Clear' | 'Changing' | 'Snowing' { return this.world.weatherLabel }
   get mapSnapshot(): MapSnapshot {
+    const wind = this.world.windVector()
     return { x: this.player.position.x, z: this.player.position.z, heading: this.player.root.rotation.y,
-      radius: CONFIG.hunt.trackingRadius, terrain: this.world.terrain, tracks: this.food.tracks(this.player.position) }
+      radius: CONFIG.hunt.trackingRadius, wind: { x: wind.x, z: wind.z }, terrain: this.world.terrain,
+      tracks: this.food.tracks(this.player.position), huntReady: this.food.huntOpportunity(this.player.position) }
   }
 
   start(tutorial: boolean): void {
@@ -76,8 +79,9 @@ export class Game {
     this.fx.clear()
     this.run = { ...createRun(), unranked: tuning.unranked }
     this.food.spawnInitial(this.player.position, this.world.terrain)
+    this.foodCursor = 2
     this.nextFood = 8 + Math.random() * 5
-    this.nextHazard = 9
+    this.nextHazard = CONFIG.hazards.initialDelay
     this.tutorialTimer = tutorial ? 15 : 0
     this.recoveryTimer = 0
     this.invulnerabilityTimer = 0
@@ -128,9 +132,10 @@ export class Game {
     }
 
     const pounce = this.input.consume('catch')
+    const previousPosition = this.player.position.clone()
     const pounceStarted = this.player.step(
       dt, this.input.move.x, this.input.move.y, this.speedLimit,
-      this.input.held('sprint'), this.cameraYaw, pounce,
+      this.input.held('sprint'), this.cameraYaw, pounce, this.input.held('stalk'),
     )
     this.pantTimer -= dt
     if (this.player.sprinting && this.player.stamina < 0.43 && this.pantTimer <= 0) {
@@ -143,12 +148,12 @@ export class Game {
     }
     this.player.animate(dt, this.time)
     this.playFootfalls()
-    this.food.step(dt, this.player.position, this.world.terrain, this.world.windVector(), this.player.speed)
+    this.food.step(dt, this.player.position, this.world.terrain, this.world.windVector(), this.player.speed, this.player.stalking, this.player.forward)
     if (this.food.consumeAlert()) this.audio.play('wildlife-alert')
     this.hazards.step(dt, this.world.terrain, this.player.position)
     this.run = tick(this.run, dt, this.player.speed)
 
-    const contact = this.food.collectNearby(this.player.position, this.player.pouncing)
+    const contact = this.food.collectNearby(this.player.position, this.player.pouncing, this.player.forward, this.player.speed, previousPosition)
     if (contact) this.collectFood(contact.kind, contact.position)
     const missed = this.food.consumeMissedHunt()
     if (missed) this.audio.play('hunt-miss')
@@ -162,9 +167,13 @@ export class Game {
     this.nextHazard -= dt
     if (this.nextHazard <= 0 && this.hazards.count < CONFIG.run.maxHazards) {
       const kind = Math.random() < 0.56 ? 'poison' : 'trap'
-      const point = this.findSafePoint(34 + Math.random() * 47)
+      const point = this.findHazardPoint()
       if (point) this.hazards.spawn(kind, point, this.world.terrain)
-      this.nextHazard = 12 + Math.random() * 9
+      const pressure = THREE.MathUtils.clamp(this.run.elapsed / 180, 0, 1)
+      const intervalScale = 1 - pressure * 0.18
+      const minInterval = CONFIG.hazards.minInterval * intervalScale
+      const maxInterval = CONFIG.hazards.maxInterval * intervalScale
+      this.nextHazard = minInterval + Math.random() * (maxInterval - minInterval)
     }
 
     const hazard = this.hazards.collisions(this.player.position)[0]
@@ -204,6 +213,7 @@ export class Game {
   private collectFood(kind: keyof typeof FOOD_LABELS, at: THREE.Vector3): void {
     const result = eatFood(this.run, kind)
     this.run = result.state
+    if (kind === 'fawn' || kind === 'deer' || kind === 'elk' || kind === 'moose') this.player.capture()
     this.audio.play(kind === 'honey' ? 'forage' : kind === 'salmon' ? 'fish-catch' : 'bear-catch')
     if (kind !== 'honey') this.audio.play('bear-grunt')
     const color = kind === 'honey' ? '#e6b84e' : kind === 'salmon' ? '#e88c68' : '#c9a87b'
@@ -213,19 +223,22 @@ export class Game {
 
   private resolveDanger(reason: LoseReason, at: THREE.Vector3): void {
     if (this.invulnerabilityTimer > 0 || this.run.phase !== 'playing') return
-    const result = loseLife(this.run, reason)
-    if (!result.lifeLost) return
+    const hazardDamage = reason === 'poison' ? CONFIG.hazards.poisonDamage
+      : reason === 'trap' ? CONFIG.hazards.trapDamage
+        : Math.min(CONFIG.hazards.fallMaxDamage, CONFIG.hazards.fallBaseDamage + this.player.speed * CONFIG.hazards.fallSpeedDamage)
+    const result = applyDamage(this.run, hazardDamage, reason)
+    if (result.healthLost <= 0) return
     this.run = result.state
     this.player.hit()
     if (reason === 'fall') this.player.root.position.y = at.y - 1.1
     this.invulnerabilityTimer = CONFIG.run.invulnerabilitySeconds
-    this.recoveryTimer = this.run.phase === 'playing' ? CONFIG.run.recoverySeconds : 0
+    this.recoveryTimer = this.run.phase === 'playing' ? reason === 'fall' ? 1.05 : 0.42 : 0
     this.hooks.hurt()
-    this.cameraShake = 0.38
-    const copy = reason === 'poison' ? 'POISONOUS FOOD · −1 LIFE'
-      : reason === 'trap' ? 'BEAR TRAP · −1 LIFE' : 'SLIPPED INTO THE TRENCH · −1 LIFE'
+    this.cameraShake = 0.3 + result.healthLost / 100 * 0.42
+    const source = reason === 'poison' ? 'POISONOUS FOOD'
+      : reason === 'trap' ? 'BEAR TRAP' : 'SLIPPED INTO THE TRENCH'
+    const copy = `${source} · −${Math.round(result.healthLost)}% HEALTH`
     this.audio.play(reason === 'poison' ? 'poison' : reason === 'trap' ? 'trap' : 'fall')
-    this.audio.play('life-loss')
     this.audio.play('bear-hit')
     this.fx.burst(at, reason === 'poison' ? '#954d72' : reason === 'trap' ? '#a9aa9b' : '#8b8174', 16, 3.2)
     this.hooks.popup(copy, this.project(at), 'hurt')
@@ -241,19 +254,18 @@ export class Game {
     this.hooks.end(this.run)
   }
 
-  private pickFood(): keyof typeof FOOD_LABELS {
-    const roll = Math.random()
-    if (roll < 0.19) return 'salmon'
-    if (roll < 0.33) return 'honey'
-    if (roll < 0.53) return 'fawn'
-    if (roll < 0.78) return 'deer'
-    if (roll < 0.94) return 'elk'
-    return 'moose'
+  private pickFood(): typeof FOOD_KINDS[number] {
+    const kind = FOOD_KINDS[this.foodCursor % FOOD_KINDS.length]
+    this.foodCursor += 1
+    return kind
   }
 
-  private findSafePoint(distance: number): THREE.Vector3 | null {
+  private findHazardPoint(): THREE.Vector3 | null {
+    const forward = this.player.forward
+    const heading = Math.atan2(forward.z, forward.x)
     for (let attempt = 0; attempt < 42; attempt += 1) {
-      const angle = Math.random() * Math.PI * 2
+      const angle = heading + (Math.random() * 2 - 1) * CONFIG.hazards.forwardHalfAngle
+      const distance = CONFIG.hazards.minDistance + Math.random() * (CONFIG.hazards.maxDistance - CONFIG.hazards.minDistance)
       const x = this.player.position.x + Math.cos(angle) * distance
       const z = this.player.position.z + Math.sin(angle) * distance
       if (this.world.terrain.isSafeSurface(x, z) && Math.abs(x - this.world.terrain.riverX(z)) > 8) {
