@@ -1,7 +1,7 @@
 import { CONFIG, FOOD_KINDS, type FoodKind } from './config'
 
 export type RunPhase = 'playing' | 'lost'
-export type LoseReason = 'poison' | 'trap' | 'fall'
+export type LoseReason = 'poison' | 'trap' | 'fall' | 'river-log'
 export type RunState = {
   unranked: boolean
   phase: RunPhase
@@ -24,7 +24,7 @@ export function createRun(): RunState {
   }
 }
 
-/** The attainable speed ceiling rises with run duration and then levels off. */
+/** The speed ceiling rises with run duration and then levels off. */
 export function speedCap(elapsed: number): number {
   return Math.min(CONFIG.run.maxSpeed, CONFIG.run.baseSpeed + Math.max(0, elapsed) * CONFIG.run.speedRamp)
 }
@@ -55,7 +55,7 @@ export function eatFood(state: RunState, kind: FoodKind): { state: RunState; poi
   }
 }
 
-/** The three hazards chip a single health pool; 0% ends the run. */
+/** Land hazards and river driftwood chip one health pool; 0% ends the run. */
 export function applyDamage(state: RunState, amount: number, reason: LoseReason): { state: RunState; healthLost: number; gameOver: boolean } {
   if (state.phase !== 'playing' || !Number.isFinite(amount)) return { state, healthLost: 0, gameOver: false }
   const damage = Math.min(100, Math.max(0, Math.round(amount)))

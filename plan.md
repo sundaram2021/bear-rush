@@ -1,45 +1,37 @@
-# Bear Rush — health and hunt reliability update
+# Bear Rush — river fishing and expanded wildlife hunts
 
 ## Goal
 
-Continue the already-open PR #3 by removing the extra-life system, reliably revealing all six food species, and making a well-executed pounce capable of finishing winded prey. Preserve the endless mountain world and the existing stalking, wind, scent, sound and local-save systems.
+Extend the merged endless mountain hunt with rabbits and coyotes, more distinct deer/moose encounters, an enterable river fishing loop for salmon, and moving driftwood that damages the bear only on river contact. Research the five animal/fish behaviors first and use that evidence to set clear, playable chase and capture timings.
 
 ## Product constraints
 
-- Keep the game local-only: no account, sign-up, login, server, analytics, networked leaderboard or remote save. Game assets remain bundled locally.
-- Health is a single 0–100% pool. Poison, traps and trench falls are the only damage sources. Health reaching 0 ends the run immediately; there are no hearts, spare lives, health resets or extra-life sounds.
-- Keep all six food targets—salmon, honey, fawn, deer, elk and moose—discoverable in every new run. Seed the first local area with leads for every species, then rotate all species through later spawns.
-- Preserve the endless seeded terrain, streaming chunks, nearby fading tracks, wind display, desktop/touch/gamepad controls, settings and browser-local records.
-- Do not buy assets or generate AI models in this pass. Existing CC0 terrain/snow materials remain; procedural wildlife meshes remain a known visual limitation.
+Keep the existing third-person Three.js/Vite game, infinite seeded terrain streaming, wind/noise stalking, minimap, local-only saves and percentage health. No login, signup, server, analytics or remote save. Do not buy assets or generate AI models in this pass; use local procedural animal models consistent with current rendering. Keep poisonous food, bear traps and cliff/trench falls as land-only damage sources. Add large flowing wood as a separate river-only collision source. Health remains one 0–100% pool; 0% ends the run.
 
-## Visual direction and art limits
+## Wildlife and hunting design
 
-Retain the existing field-documentary presentation: grounded alpine lighting, natural season and weather changes, restrained field-map HUD, and readable prey body-language cues. The terrain uses bundled 2K CC0 rocky-ground and snow maps, but the bear and wildlife remain procedural meshes. This does **not** meet a literal photorealistic model bar. The documented free candidates have practical limitations such as unavailable downloads, static/unrigged or low-detail models, known rig issues, or non-commercial terms. Do not describe the current animal art as photorealistic or production-grade. Keep source and licensing notes in `docs/art-sourcing.md`.
+Add rabbits and coyotes to the score/tally/HUD/localized species set while retaining salmon, honey, fawn, deer, elk and moose. Each type has separate awareness, pursuit radius, chase endurance, fatigue window, escape pace and pounce tolerance. A hare pauses briefly on detection, then flies relatively straight at range and becomes more evasive when close. Deer and elk have sustained flights; fawns exhaust sooner. Moose are the longest, less agile challenge, but research favors vulnerable calves and the model is not age-specific. A coyote appears once among each eight starting leads and recurs in the later species rotation. Bear-versus-coyote capture is explicitly a game abstraction: the ecology evidence shows a competitor relationship, not a routine diet item. Retain an exhausted-prey gate and a committed, aligned land-animal pounce. Exact game chase timers and fatigue windows are recorded in `docs/hunting-behavior.md`; they are not presented as field measurements.
 
-## Predator and prey behavior
+The river has a separate fishing action. Let the player wade into and out of the water with reduced speed and no sprint pounce. Salmon follow the modeled current/migration direction and flee when approached; a slow, close, deliberate strike in the river catches them. River logs drift downstream, remain visible and collide with the bear along the movement sweep. A log hit reduces percentage health, shows clear feedback and has no collision/damage effect on dry land. Use a finite recycled actor pool that follows the player's global river coordinates so the river hazards continue indefinitely without growing scene resources. Keep all other hazards and their existing damage outside the river.
 
-- Preserve quiet stalk movement, wind-relative scent awareness, noise detection, species-specific stamina and flee speeds, and a close, sustained pursuit requirement.
-- Keep early pounces and misaligned pounces as misses. A successful hunt requires a visibly exhausted animal, a committed moving pounce, proximity and a forward-facing approach.
-- Resolve the pounce against the bear's swept movement segment to avoid frame-step misses when it passes through a prey actor. Expand the useful close-range window, provide a clear tired-prey cue, and play a brief capture reaction only after a successful catch.
-- Use source-backed brown-bear behavior as a plausibility guide, while clearly treating chase duration and timing as game tuning rather than biological simulation. See `docs/hunting-behavior.md`.
+## Technical approach
 
-## Health and dangers
+Extend `FoodKind`, scoring, localization and HUD tally from six to eight types. Expand procedural rigs for hare/coyote silhouettes and share geometry/material resources. Use per-species data rather than multiple duplicated pursuit implementations. Split driftwood simulation/collision into a small river-hazard field with deterministic recycled logs; derive log positions from `Terrain.riverX` and `waterY`. Extend player movement with water drag and an exposed wading state. Let the game loop distinguish a river fish strike from a land pounce and map log contact into the existing percentage-health rules.
 
-- Display a percentage health label and meter with accessible current value and warning/critical states.
-- Apply percent damage from poisonous food, bear traps and trench falls. Fall impact scales with speed and remains capped. A surviving hit briefly staggers the bear; it never spends a life or restores health.
-- At 0% health, set the run to lost and show results immediately.
+## Research and validation
+
+Use current peer-reviewed or wildlife-agency sources for deer, moose, rabbit/hare, coyote, and salmon behavior. Separate cited field facts from deliberately compressed gameplay timings; do not state a precise biological chase duration unless a source establishes one. Save citations with the species behavior notes. Add deterministic tests for all eight foods, each distinct pursuit/fishing requirement, river entry/drag, downstream log motion, swept collision and river-only log damage, plus retain coverage for land poison/trap/trench hazards. Run typecheck, the complete unit suite, production build and desktop/mobile browser smoke tests before creating the new PR from merged `main`.
 
 ## Project structure
 
-- `src/game/rules.ts`: run state, health damage, scoring and zero-health termination.
-- `src/game/config.ts`: health, hazard, movement, prey and spawn tuning.
-- `src/game/player.ts`: bear movement, stamina, stalk/sprint, pounce and capture response.
-- `src/game/food.ts`: all-six-species spawning, tracks, awareness, stamina, pounce checks and capture cues.
-- `src/game/game.ts`: run lifecycle, streamed world, damage, scoring and HUD state.
-- `src/ui/ui.ts`, `src/styles/main.css`, `src/i18n/en.json`: percentage health HUD and exhausted-prey prompt.
-- `tests/`, `scripts/smoke.mjs`: deterministic rules/food tests and desktop/mobile browser checks.
-- `docs/art-sourcing.md` and `docs/hunting-behavior.md`: licensing/visual limits and cited behavior notes.
+- `src/game/config.ts`, `food.ts`, `models.ts`: new target data, procedural silhouettes, species-specific movement and hunt windows.
+- `src/game/player.ts`, `terrain.ts`: river detection, wading speed and land safety.
+- `src/game/river.ts`: continuously recycled visual driftwood and collision geometry.
+- `src/game/game.ts`, `rules.ts`, `audio.ts`: fish strike, river hazard damage/feedback and health integration.
+- `src/ui/ui.ts`, `minimap.ts`, `styles/main.css`, `src/i18n/en.json`: eight species, clear river/log warning and matching HUD.
+- `tests/`, `scripts/smoke.mjs`: regression and new behavior coverage.
+- `docs/research/` and `docs/hunting-behavior.md`: citations, ecological caveats and transparent gameplay timing choices.
 
 ## Delivery
 
-Keep the work on `feat/photorealistic-wildlife-hunt` and update the existing open PR #3 only. Validate the typecheck, unit tests, build and browser smoke tests before pushing. Report the remaining procedural wildlife-art limitation honestly.
+Create a new feature branch from the already merged PR #3 commit on `main`. Commit the implementation and research to that branch and raise a new PR. Do not alter the merged PR.

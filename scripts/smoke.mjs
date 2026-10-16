@@ -56,6 +56,7 @@ const state = page => page.evaluate(() => {
     worldChunks: game.world.chunkCount,
     foodCount: game.food.count,
     hazardCount: game.hazards.count,
+    riverLogCount: game.riverHazards.count,
     best: save.data.bestScore,
     bestFoods: save.data.bestCollected,
     health: game.run.health,
@@ -78,8 +79,33 @@ try {
   if (!(before.mapTracks > 0 && before.mapRadius >= 160)) throw new Error(`nearby wildlife tracks are not disclosed on the map: ${JSON.stringify(before)}`)
   if (!Number.isFinite(before.wind.x) || !Number.isFinite(before.wind.z) || Math.hypot(before.wind.x, before.wind.z) < 0.9) throw new Error(`wind direction is missing from the tracking map: ${JSON.stringify(before.wind)}`)
   const initialKinds = await page.evaluate(() => [...new Set(window.__game.game.food.kinds)].sort())
-  if (JSON.stringify(initialKinds) !== JSON.stringify(['deer', 'elk', 'fawn', 'honey', 'moose', 'salmon'])) throw new Error(`the starting area must show all six food species: ${JSON.stringify(initialKinds)}`)
+  if (JSON.stringify(initialKinds) !== JSON.stringify(['coyote', 'deer', 'elk', 'fawn', 'honey', 'moose', 'rabbit', 'salmon'])) throw new Error(`the starting area must show all eight food species: ${JSON.stringify(initialKinds)}`)
+  if (before.riverLogCount !== 5) throw new Error(`the river driftwood pool is missing or unbounded: ${before.riverLogCount}`)
   if (await page.locator('.life, .lives').count() !== 0) throw new Error('the obsolete heart/life HUD is still present')
+
+  stage = 'river-only driftwood damage'
+  const riverHit = await page.evaluate(() => {
+    const { game, rules } = window.__game
+    game.run = rules.createRun()
+    const terrain = game.world.terrain
+    const log = game.riverHazards.markers()[0]
+    const atLog = game.player.position.clone().set(log.x, terrain.heightAt(log.x, log.z), log.z)
+    const contact = game.riverHazards.collisions(atLog, atLog, terrain)
+    const dryX = log.x + 12
+    const dry = atLog.clone().set(dryX, terrain.heightAt(dryX, log.z), log.z)
+    const dryContact = game.riverHazards.collisions(dry, dry, terrain)
+    if (!contact) throw new Error('a bear in the river did not collide with a visible log')
+    if (dryContact) throw new Error('river driftwood should not cause damage on dry land')
+    game.riverHazards.deflect(contact.id, terrain)
+    game['resolveDanger']('river-log', contact.position)
+    const healthAfterLog = game.run.health
+    game.run = rules.createRun()
+    game.invulnerabilityTimer = 0
+    game.player.reset()
+    game.world.update(0, game.player.position)
+    return { damage: 100 - healthAfterLog, dryContact: !!dryContact }
+  })
+  if (riverHit.damage !== 22 || riverHit.dryContact) throw new Error(`river log hit did not stay in its own hazard zone: ${JSON.stringify(riverHit)}`)
 
   stage = 'percentage health damage'
   await page.evaluate(() => {
@@ -221,7 +247,7 @@ try {
   if (errors.length) throw new Error(`browser errors:\n  ${errors.join('\n  ')}`)
   await browser.close()
   cleanup()
-  console.log('smoke: OK — endless map/wind/track, six initial food species, desktop and touch stalking, speed ramp, food pounce, healthy-prey miss, percentage-health game over, heart-free HUD, three-only dangers, local save, pause/settings')
+  console.log('smoke: OK — endless map/wind/tracks, eight initial species, wading log pool and river-only damage, desktop/touch stalking, food pounce, river strike rules, percentage-health game over, land hazards, local save and pause/settings')
 } catch (error) {
   await fail(error?.message ?? String(error))
 }

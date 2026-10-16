@@ -3,9 +3,9 @@ import type { MapSnapshot } from '../game/game'
 
 const SIZE = 256
 const TRACK_COLORS: Record<string, string> = {
-  salmon: '#76c5ce', honey: '#e7c267', fawn: '#e9d49d', deer: '#d6b487', elk: '#bd8f68', moose: '#937052',
+  salmon: '#76c5ce', honey: '#e7c267', rabbit: '#d6d3c9', coyote: '#b0aaa0', fawn: '#e9d49d', deer: '#d6b487', elk: '#bd8f68', moose: '#937052',
 }
-const TRACK_LETTERS: Record<string, string> = { salmon: 'S', honey: 'H', fawn: 'F', deer: 'D', elk: 'E', moose: 'M' }
+const TRACK_LETTERS: Record<string, string> = { salmon: 'S', honey: 'H', rabbit: 'R', coyote: 'C', fawn: 'F', deer: 'D', elk: 'E', moose: 'M' }
 
 /** Compact local map: live terrain, imperfect recent sightings, and a heading-aware bear marker. */
 export class Minimap {
@@ -84,6 +84,18 @@ export class Minimap {
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
       ctx.fillText(TRACK_LETTERS[track.kind] ?? '?', p.x, p.y + 0.5)
       ctx.globalAlpha = 1
+    }
+
+    for (const log of map.riverLogs) {
+      const p = mapPoint(log.x, log.z)
+      if (Math.hypot(p.x - center, p.y - center) > radius - 5) continue
+      const slope = (map.terrain.riverX(log.z + 1) - map.terrain.riverX(log.z - 1)) * 0.5
+      ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(Math.atan2(-slope, 1))
+      ctx.lineCap = 'round'; ctx.lineWidth = 6; ctx.strokeStyle = 'rgba(20,25,20,.85)'
+      ctx.beginPath(); ctx.moveTo(-7, 0); ctx.lineTo(7, 0); ctx.stroke()
+      ctx.lineWidth = 3; ctx.strokeStyle = '#e3ad70'
+      ctx.beginPath(); ctx.moveTo(-6, 0); ctx.lineTo(6, 0); ctx.stroke()
+      ctx.restore()
     }
 
     ctx.restore()

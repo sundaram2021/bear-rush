@@ -8,6 +8,7 @@ import { Effects } from './fx'
 import { FoodField, type WildlifeTrack } from './food'
 import { HazardField } from './hazards'
 import { Player } from './player'
+import { RiverHazardField, type RiverMarker } from './river'
 import { applyDamage, createRun, eatFood, speedCap, tick, type LoseReason, type RunState } from './rules'
 import { tuning } from './tuning'
 import { World } from './world'
@@ -15,7 +16,7 @@ import type { Terrain } from './terrain'
 
 export type Mode = 'attract' | 'playing' | 'paused' | 'ended'
 export type Hint = 'move' | 'hunt' | 'dangers' | null
-export type MapSnapshot = { x: number; z: number; heading: number; radius: number; wind: { x: number; z: number }; terrain: Terrain; tracks: WildlifeTrack[]; huntReady: keyof typeof FOOD_LABELS | null }
+export type MapSnapshot = { x: number; z: number; heading: number; radius: number; wind: { x: number; z: number }; terrain: Terrain; tracks: WildlifeTrack[]; riverLogs: RiverMarker[]; inRiver: boolean; huntReady: keyof typeof FOOD_LABELS | null }
 export type GameHooks = {
   popup(text: string, screen: { x: number; y: number }, kind: 'score' | 'hurt'): void
   hurt(): void
@@ -34,6 +35,7 @@ export class Game {
   readonly camera = new THREE.PerspectiveCamera(CONFIG.camera.fov, 1, 0.1, 520)
   readonly food = new FoodField()
   readonly hazards = new HazardField()
+  readonly riverHazards = new RiverHazardField()
   private readonly fx = new Effects()
   private time = 0
   private nextFood = CONFIG.hunt.foodSpawnMinSeconds
@@ -53,9 +55,10 @@ export class Game {
     private readonly audio: Audio,
     private readonly hooks: GameHooks,
   ) {
-    this.world.scene.add(this.player.root, this.food.group, this.hazards.group, this.fx.mesh)
+    this.world.scene.add(this.player.root, this.food.group, this.hazards.group, this.riverHazards.group, this.fx.mesh)
     this.run = createRun()
     this.food.spawnInitial(this.player.position, this.world.terrain)
+    this.riverHazards.reset(this.player.position, this.world.terrain)
     this.setCamera(true)
   }
 
@@ -67,7 +70,9 @@ export class Game {
     const wind = this.world.windVector()
     return { x: this.player.position.x, z: this.player.position.z, heading: this.player.root.rotation.y,
       radius: CONFIG.hunt.trackingRadius, wind: { x: wind.x, z: wind.z }, terrain: this.world.terrain,
-      tracks: this.food.tracks(this.player.position), huntReady: this.food.huntOpportunity(this.player.position) }
+      tracks: this.food.tracks(this.player.position), riverLogs: this.riverHazards.markers(),
+      inRiver: this.world.terrain.isInRiver(this.player.position.x, this.player.position.z),
+      huntReady: this.food.huntOpportunity(this.player.position) }
   }
 
   start(tutorial: boolean): void {
@@ -76,6 +81,7 @@ export class Game {
     this.world.update(0, this.player.position)
     this.food.reset()
     this.hazards.reset()
+    this.riverHazards.reset(this.player.position, this.world.terrain)
     this.fx.clear()
     this.run = { ...createRun(), unranked: tuning.unranked }
     this.food.spawnInitial(this.player.position, this.world.terrain)
@@ -131,11 +137,11 @@ export class Game {
       return
     }
 
-    const pounce = this.input.consume('catch')
+    const catchPressed = this.input.consume('catch')
     const previousPosition = this.player.position.clone()
     const pounceStarted = this.player.step(
       dt, this.input.move.x, this.input.move.y, this.speedLimit,
-      this.input.held('sprint'), this.cameraYaw, pounce, this.input.held('stalk'),
+      this.input.held('sprint'), this.cameraYaw, catchPressed, this.input.held('stalk'),
     )
     this.pantTimer -= dt
     if (this.player.sprinting && this.player.stamina < 0.43 && this.pantTimer <= 0) {
@@ -149,11 +155,15 @@ export class Game {
     this.player.animate(dt, this.time)
     this.playFootfalls()
     this.food.step(dt, this.player.position, this.world.terrain, this.world.windVector(), this.player.speed, this.player.stalking, this.player.forward)
+    this.riverHazards.step(dt, this.player.position, this.world.terrain)
     if (this.food.consumeAlert()) this.audio.play('wildlife-alert')
     this.hazards.step(dt, this.world.terrain, this.player.position)
     this.run = tick(this.run, dt, this.player.speed)
 
-    const contact = this.food.collectNearby(this.player.position, this.player.pouncing, this.player.forward, this.player.speed, previousPosition)
+    const contact = this.food.collectNearby(
+      this.player.position, this.player.pouncing, this.player.forward, this.player.speed, previousPosition,
+      catchPressed && this.player.wading,
+    )
     if (contact) this.collectFood(contact.kind, contact.position)
     const missed = this.food.consumeMissedHunt()
     if (missed) this.audio.play('hunt-miss')
@@ -178,8 +188,14 @@ export class Game {
 
     const hazard = this.hazards.collisions(this.player.position)[0]
     if (hazard) this.resolveDanger(hazard.kind, hazard.position)
-    else if (this.world.terrain.isInTrench(this.player.position.x, this.player.position.z)) {
+    else if (!this.player.wading && this.world.terrain.isInTrench(this.player.position.x, this.player.position.z)) {
       this.resolveDanger('fall', this.player.position.clone())
+    } else {
+      const driftwood = this.riverHazards.collisions(previousPosition, this.player.position, this.world.terrain)
+      if (driftwood) {
+        this.riverHazards.deflect(driftwood.id, this.world.terrain)
+        this.resolveDanger('river-log', driftwood.position)
+      }
     }
 
     if (this.tutorialTimer > 0) {
@@ -206,14 +222,14 @@ export class Game {
     const count = this.player.consumeFootfalls()
     if (this.player.speed < 0.8) return
     const sample = this.world.terrain.sample(this.player.position.x, this.player.position.z)
-    const sound = sample.snowMask + this.world.weatherIntensity > 0.94 ? 'snow-step' : 'footstep'
+    const sound = this.player.wading ? 'water-step' : sample.snowMask + this.world.weatherIntensity > 0.94 ? 'snow-step' : 'footstep'
     for (let i = 0; i < Math.min(count, 2); i += 1) this.audio.play(sound)
   }
 
   private collectFood(kind: keyof typeof FOOD_LABELS, at: THREE.Vector3): void {
     const result = eatFood(this.run, kind)
     this.run = result.state
-    if (kind === 'fawn' || kind === 'deer' || kind === 'elk' || kind === 'moose') this.player.capture()
+    if (kind !== 'honey' && kind !== 'salmon') this.player.capture()
     this.audio.play(kind === 'honey' ? 'forage' : kind === 'salmon' ? 'fish-catch' : 'bear-catch')
     if (kind !== 'honey') this.audio.play('bear-grunt')
     const color = kind === 'honey' ? '#e6b84e' : kind === 'salmon' ? '#e88c68' : '#c9a87b'
@@ -225,20 +241,21 @@ export class Game {
     if (this.invulnerabilityTimer > 0 || this.run.phase !== 'playing') return
     const hazardDamage = reason === 'poison' ? CONFIG.hazards.poisonDamage
       : reason === 'trap' ? CONFIG.hazards.trapDamage
-        : Math.min(CONFIG.hazards.fallMaxDamage, CONFIG.hazards.fallBaseDamage + this.player.speed * CONFIG.hazards.fallSpeedDamage)
+        : reason === 'river-log' ? CONFIG.river.logDamage
+          : Math.min(CONFIG.hazards.fallMaxDamage, CONFIG.hazards.fallBaseDamage + this.player.speed * CONFIG.hazards.fallSpeedDamage)
     const result = applyDamage(this.run, hazardDamage, reason)
     if (result.healthLost <= 0) return
     this.run = result.state
     this.player.hit()
     if (reason === 'fall') this.player.root.position.y = at.y - 1.1
     this.invulnerabilityTimer = CONFIG.run.invulnerabilitySeconds
-    this.recoveryTimer = this.run.phase === 'playing' ? reason === 'fall' ? 1.05 : 0.42 : 0
+    this.recoveryTimer = this.run.phase === 'playing' && reason !== 'river-log' ? reason === 'fall' ? 1.05 : 0.42 : 0
     this.hooks.hurt()
     this.cameraShake = 0.3 + result.healthLost / 100 * 0.42
     const source = reason === 'poison' ? 'POISONOUS FOOD'
-      : reason === 'trap' ? 'BEAR TRAP' : 'SLIPPED INTO THE TRENCH'
+      : reason === 'trap' ? 'BEAR TRAP' : reason === 'river-log' ? 'DRIFTWOOD IMPACT' : 'SLIPPED INTO THE TRENCH'
     const copy = `${source} · −${Math.round(result.healthLost)}% HEALTH`
-    this.audio.play(reason === 'poison' ? 'poison' : reason === 'trap' ? 'trap' : 'fall')
+    this.audio.play(reason === 'poison' ? 'poison' : reason === 'trap' ? 'trap' : reason === 'river-log' ? 'driftwood-hit' : 'fall')
     this.audio.play('bear-hit')
     this.fx.burst(at, reason === 'poison' ? '#954d72' : reason === 'trap' ? '#a9aa9b' : '#8b8174', 16, 3.2)
     this.hooks.popup(copy, this.project(at), 'hurt')

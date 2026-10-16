@@ -22,6 +22,7 @@ export class Player {
   private staminaValue = 1
   private sprintingValue = false
   private stalkingValue = false
+  private wadingValue = false
 
   constructor(private readonly world: World) {
     this.rig = createBear()
@@ -35,6 +36,7 @@ export class Player {
   get stamina(): number { return this.staminaValue }
   get sprinting(): boolean { return this.sprintingValue }
   get stalking(): boolean { return this.stalkingValue }
+  get wading(): boolean { return this.wadingValue }
   get forward(): THREE.Vector3 { return new THREE.Vector3(0, 0, -1).applyQuaternion(this.root.quaternion).setY(0).normalize() }
 
   consumeFootfalls(): number {
@@ -56,13 +58,17 @@ export class Player {
     const oldGround = this.world.terrain.sample(this.position.x, this.position.z)
     const slopeControl = THREE.MathUtils.clamp(1 - oldGround.slope * CONFIG.player.slopeControlLoss, 0.3, 1)
     const moving = movementStrength > 0.001
+    this.wadingValue = this.world.terrain.isInRiver(this.position.x, this.position.z)
     this.stalkingValue = moving && (stalk || movementStrength < CONFIG.player.analogStalkThreshold)
-    this.sprintingValue = sprint && moving && this.staminaValue > 0.015 && !this.stalkingValue
+    this.sprintingValue = sprint && moving && this.staminaValue > 0.015 && !this.stalkingValue && !this.wadingValue
     if (this.sprintingValue) this.staminaValue = Math.max(0, this.staminaValue - dt / CONFIG.player.sprintCapacity)
     else this.staminaValue = Math.min(1, this.staminaValue + dt * CONFIG.player.sprintRecovery)
     const tunedSpeed = speedLimit * (CONFIG.player.moveSpeed / 6.6)
     const pace = this.stalkingValue ? CONFIG.player.stalkMultiplier : this.sprintingValue ? CONFIG.run.sprintMultiplier : 1
-    const limit = Math.min(CONFIG.run.maxSpeed * 1.12, tunedSpeed * pace)
+    const waterDrag = this.wadingValue ? CONFIG.player.riverMoveMultiplier : 1
+    const limit = this.wadingValue
+      ? Math.min(CONFIG.player.riverMaxSpeed, tunedSpeed * pace * waterDrag)
+      : Math.min(CONFIG.run.maxSpeed * 1.12, tunedSpeed * pace)
     const goal = intent.multiplyScalar(limit * slopeControl)
     const response = moving ? CONFIG.player.acceleration : CONFIG.player.acceleration * 0.48
     const smoothing = 1 - Math.exp(-response * dt)
@@ -82,7 +88,7 @@ export class Player {
     }
 
     let pounceStarted = false
-    if (pounce && this.pounceCooldown <= 0 && this.speedValue > CONFIG.player.pounceStartSpeed) {
+    if (pounce && !this.wadingValue && this.pounceCooldown <= 0 && this.speedValue > CONFIG.player.pounceStartSpeed) {
       const facing = this.velocity.lengthSq() > 0.15 ? this.velocity.clone().setY(0).normalize() : forward
       this.velocity.addScaledVector(facing, CONFIG.player.pounceBoost)
       this.pounceTimer = CONFIG.player.pounceDuration
@@ -93,6 +99,7 @@ export class Player {
     this.position.z += this.velocity.z * dt
     const ground = this.world.terrain.sample(this.position.x, this.position.z)
     this.position.y = ground.height
+    this.wadingValue = this.world.terrain.isInRiver(this.position.x, this.position.z)
     this.root.position.copy(this.position)
     this.speedValue = Math.hypot(this.velocity.x, this.velocity.z)
     if (this.speedValue > 0.16) {
@@ -196,5 +203,6 @@ export class Player {
     this.staminaValue = 1
     this.sprintingValue = false
     this.stalkingValue = false
+    this.wadingValue = false
   }
 }

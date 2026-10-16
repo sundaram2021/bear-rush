@@ -28,22 +28,26 @@ The bear accelerates from a deliberate walk into a trot and gallop. The speed ce
 
 ## Tracking and hunting
 
-The north-oriented map shows the bear, heading, river/trench landmarks and recent wildlife/food tracks within a **168 m** local tracking radius. A marker is a last-known location, not a live omniscient target; it moves only when the bear gets another sighting and fades out after **24 seconds**. Map codes: S salmon, H honey, F fawn, D deer, E elk and M moose.
+The north-oriented map shows the bear, heading, river/trench landmarks, fresh or fading wildlife tracks, and bars for downstream driftwood within a **168 m** local tracking radius. A wildlife marker is a last-known location, not a live omniscient target; it updates on another sighting and fades after **24 seconds**. Map codes: S salmon, H honey, R rabbit, C coyote, F fawn, D deer, E elk and M moose. Amber bars mark river logs.
 
 | Food | Base points |
 |---|---:|
 | Salmon | 120 |
 | Honey | 180 |
+| Rabbit | 170 |
+| Coyote | 240 |
 | Fawn | 150 |
 | Deer | 260 |
 | Elk | 420 |
 | Moose | 650 |
 
-Wild animals are sparse, wary and species-specific. Each new hunt seeds salmon, honey, fawn, deer, elk and moose as leads in the local area; later spawn opportunities rotate through all six. They notice the bear based on distance, wind-carried scent and movement noise, then flee with evasive turns. The map's wind arrow shows scent flow; approach prey from the opposite, upwind direction. Prey only tires while the bear actively keeps close and faces into the chase; losing the chase lets it recover and escape. A healthy animal cannot be contact-caught: a hunt requires sustained pursuit, a visible exhaustion cue, close range and a committed moving pounce. Pounce contact is checked along the bear's movement between frames, reducing near-misses at speed. A miss alerts the prey, restores some stamina and creates a brief recovery opportunity before another attempt. Fawn, deer, elk and moose differ in awareness, speed and endurance. Salmon follow the river; honey can be foraged on land. Successive food adds a short combo bonus.
+Each hunt seeds all eight target types as visible local leads; later spawns rotate through the set. Hares pause briefly at detection and then burst in a relatively straight line, turning sharply only when the bear closes; ungulates have longer species-specific endurance, and coyotes have a separate wary escape profile. Effective continuous-pursuit times to exhaustion are **3.36 s** (rabbit), **4.16 s** (fawn), **6.72 s** (deer), **8.16 s** (elk), **9.76 s** (moose), and **10.56 s** (coyote), if the bear stays close and faces the chase. These are compressed gameplay timers, not observed field chase averages; the [research note](docs/hunting-behavior.md) records the short pounce windows and evidence limits. Alertness responds to range, wind-carried scent and movement noise. The map's wind arrow shows scent flow; approach from the opposite, upwind direction. A healthy animal cannot be contact-caught: close in on winded prey and use an aligned moving pounce. Contact is checked along the bear's movement to reduce near-misses. A miss restores some prey stamina and creates a brief chance to re-engage.
+
+Salmon travel upstream until a nearby bear spooks them downstream. The bear can wade into the river, where movement is slower and sprint-pouncing is disabled; stalking into close range and pressing Hunt makes a separate fish strike. Large visible logs flow with the modeled downstream current, are marked on the tracking map, and can hurt the bear **only while it is in the river**. Bear–coyote predation is not a routine real-world grizzly behavior, so coyotes are included as the requested exceptional competitor-challenge target; that chase is a game abstraction, not prey guidance.
 
 ## Dangers
 
-**Only these three hazards can damage the bear:** poisonous food removes 36 health points, traps remove 44, and trench-fall damage starts at 42 and rises with running speed (capped at 68). The health bar turns amber/red as it drops. Health is a single percentage pool; at 0%, the hunt ends immediately. There are no hearts, extra lives, health resets or passive regeneration. Hits briefly stagger the bear, and fall damage is larger at speed. Hazards appear in a forward arc roughly 20–44 m ahead every 5.2–8.6 seconds; this interval tightens as the hunt continues, but players can see and dodge them. Water, ordinary terrain, missed pounces and elapsed time do not cause damage.
+The three original **land** hazards remain poisonous forage (36 health points), bear traps (44), and trench falls (42 base plus running-speed damage, capped at 68). While in the river only, a collision with floating driftwood removes 22 points. Logs do not hurt the bear on land. Health is one percentage pool; 0% ends the run, without hearts, extra lives, resets or passive regeneration. Poison and traps appear in a visible forward arc roughly 20–44 m ahead on dry land; falls remain speed-sensitive. Wading itself, regular terrain, missed pounces and elapsed time cause no damage.
 
 ## Privacy and settings
 
@@ -59,6 +63,7 @@ No login, sign-up, backend, online leaderboard or analytics. Settings and person
 | `src/game/food.ts` | Scarce wildlife, last-seen tracks, scent/noise alerting, pursuit fatigue and pounce eligibility. |
 | `src/game/models.ts` | Bear, wildlife, salmon, honey, poisonous forage and trap geometry/materials. |
 | `src/game/hazards.ts` | One-shot poisonous-food and bear-trap collisions. |
+| `src/game/river.ts` | Bounded, downstream-moving driftwood pool and sweep-tested water collisions. |
 | `src/game/game.ts` | Hunt lifecycle, chunk-facing world updates, scoring, collisions and gait-aligned audio. |
 | `src/ui/minimap.ts` | Local map rendering from shared world coordinates and aging tracks. |
 | `src/engine/audio.ts` | Local forest/water ambience, running, hunting and hazard effects. |
@@ -67,4 +72,4 @@ No login, sign-up, backend, online leaderboard or analytics. Settings and person
 
 ## Verification
 
-The follow-up is covered by `pnpm typecheck`, `pnpm test`, `pnpm build`, and `pnpm smoke`. Unit and browser tests check global terrain/chunk continuity, distant streaming, limited/fading tracks, all six initial food species, missed versus exhaustion-window and swept pounces, gait/stamina behavior, percentage health with immediate zero-health game over, the exact three damage sources, local score persistence, settings and mobile controls.
+The follow-up is covered by `pnpm typecheck`, `pnpm test`, `pnpm build`, and `pnpm smoke`. Tests check terrain streaming, all eight initial food leads, species-differentiated pursuit, tired prey pounces, river wading, deliberate salmon strikes, drifting/swept logs and river-only log damage, the three existing land hazards, zero-health game over, local saves, and desktop/mobile controls.

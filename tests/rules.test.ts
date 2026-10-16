@@ -57,7 +57,7 @@ describe('mountain hunt rules', () => {
     expect(run.health).toBe(100)
   })
 
-  it('uses only poisonous food, bear traps and trench falls as damage reasons', () => {
+  it('retains the three land damage sources and adds river-only driftwood damage', () => {
     let run = createRun()
     for (const reason of ['poison', 'trap'] as const) {
       const result = applyDamage(run, 40, reason)
@@ -69,9 +69,16 @@ describe('mountain hunt rules', () => {
     expect(fall.state.health).toBe(0)
     expect(fall.state.phase).toBe('lost')
     expect(fall.state.loseReason).toBe('fall')
+    const logHit = applyDamage(createRun(), CONFIG.river.logDamage, 'river-log')
+    expect(logHit.healthLost).toBe(CONFIG.river.logDamage)
+    expect(logHit.state.health).toBe(100 - CONFIG.river.logDamage)
+    const fatalLog = applyDamage({ ...createRun(), health: CONFIG.river.logDamage }, CONFIG.river.logDamage, 'river-log')
+    expect(fatalLog.gameOver).toBe(true)
+    expect(fatalLog.state.phase).toBe('lost')
+    expect(fatalLog.state.loseReason).toBe('river-log')
   })
 
-  it('supports all six scored food types and combo multipliers', () => {
+  it('supports all eight scored food types and combo multipliers', () => {
     let run = createRun()
     for (const kind of FOOD_KINDS) {
       const result = eatFood(run, kind)

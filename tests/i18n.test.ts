@@ -5,10 +5,10 @@ import { detectLocale, resolveLocale } from '../src/engine/i18n'
 const required = [
   'game.title', 'game.tagline', 'menu.play', 'menu.settings', 'menu.retry', 'controls.title',
   'controls.desktop', 'controls.touch', 'controls.stalk', 'controls.goal', 'controls.hazards', 'controls.huntButton', 'hunt.ready',
-  'hud.score', 'hud.food', 'hud.distance', 'hud.health', 'hud.map', 'hud.map.label', 'hud.map.wind', 'hud.map.legend', 'weather.clear', 'weather.snow', 'pause.title',
+  'hud.score', 'hud.food', 'hud.distance', 'hud.health', 'hud.map', 'hud.map.label', 'hud.map.wind', 'hud.map.legend', 'hud.riverWarning', 'weather.clear', 'weather.snow', 'pause.title',
   'settings.title', 'settings.ambience', 'settings.effects', 'settings.mute', 'settings.privacy',
   'results.title', 'results.food', 'results.score', 'results.distance', 'results.time', 'results.best',
-  'food.salmon', 'food.honey', 'food.fawn', 'food.deer', 'food.elk', 'food.moose',
+  'food.salmon', 'food.honey', 'food.rabbit', 'food.coyote', 'food.fawn', 'food.deer', 'food.elk', 'food.moose',
 ]
 
 describe('English-only mountain-hunt copy', () => {
@@ -25,6 +25,9 @@ describe('English-only mountain-hunt copy', () => {
     expect(en['controls.hazards']).toContain('trench')
     expect(en['controls.hazards']).toContain('bear traps')
     expect(en['controls.hazards']).toContain('0%')
+    expect(en['controls.hazards']).toContain('river')
+    expect(en['controls.goal']).toContain('coyotes')
+    expect(en['controls.goal']).toContain('salmon')
     expect(en['controls.desktop']).toContain('Ctrl stalks')
     expect(en['controls.touch']).toContain('gently')
   })

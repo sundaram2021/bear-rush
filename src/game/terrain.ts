@@ -46,6 +46,10 @@ export class Terrain {
 
   waterY(z: number): number { return this.heightAt(this.riverX(z), z) + 0.16 }
 
+  isInRiver(x: number, z: number): boolean {
+    return Math.abs(x - this.riverX(z)) <= CONFIG.world.riverWidth * 0.5
+  }
+
   trenchDistance(x: number, z: number): number { return Math.abs(x - this.trenchX(z)) }
 
   isInTrench(x: number, z: number): boolean {
@@ -55,6 +59,10 @@ export class Terrain {
   isSafeSurface(x: number, z: number): boolean {
     return !this.isInTrench(x, z) && this.sample(x, z).slope < 0.98
       && Math.abs(x - this.riverX(z)) > 3.1
+  }
+
+  isWalkableTerrain(x: number, z: number): boolean {
+    return !this.isInTrench(x, z) && this.sample(x, z).slope < 0.98
   }
 
   /** Build one terrain tile. Vertex heights/normals are sampled in global coordinates. */
