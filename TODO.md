@@ -7,7 +7,7 @@
 - [x] Preserve stalk, wind/noise awareness, species-specific stamina and pursuit. Allow an exhausted animal to be caught by a committed close pounce, including a pounce that sweeps across it between frames; reject an early or misaligned pounce.
 - [x] Show the hunt-ready cue for nearby exhausted prey and play a brief bear capture reaction only after a successful takedown.
 - [x] Keep the endless world, minimap, local-only saves and exactly three damage sources.
-- [x] Passed `pnpm typecheck`, `pnpm test` (58 tests), `pnpm build`, and `pnpm smoke` (desktop/mobile); finish the diff review and push this update to the existing PR #3.
+- [x] Passed `pnpm typecheck`, `pnpm test` (58 tests), `pnpm build`, and `pnpm smoke` (desktop/mobile), reviewed the diff, and pushed the update to the existing PR #3.
 
 ## Visual quality still below the requested bar
 
