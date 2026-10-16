@@ -99,7 +99,7 @@ async function boot(): Promise<void> {
       ui.frame(frameSeconds)
       loop.paused = g.mode === 'paused'
       g.render(alpha, frameSeconds)
-      if (g.mode === 'playing' || g.mode === 'ended') ui.updateHud(g.run, g.speed, g.weather)
+      if (g.mode === 'playing' || g.mode === 'ended') ui.updateHud(g.run, g.speed, g.weather, g.mapSnapshot, g.stamina)
     },
   })
   loop.start()

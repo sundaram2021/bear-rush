@@ -46,6 +46,10 @@ const state = page => page.evaluate(() => {
     speedLimit: game.speedLimit,
     pos: { x: game.player.position.x, y: game.player.position.y, z: game.player.position.z },
     weather: game.weather,
+    mapTracks: game.mapSnapshot.tracks.length,
+    mapRadius: game.mapSnapshot.radius,
+    stamina: game.stamina,
+    worldChunks: game.world.chunkCount,
     foodCount: game.food.count,
     hazardCount: game.hazards.count,
     best: save.data.bestScore,
@@ -63,6 +67,8 @@ try {
   await page.click('[data-action="play"]')
   await page.waitForSelector('[data-screen="hud"].is-active')
   const before = await state(page)
+  if (!(await page.locator('.minimap').isVisible())) throw new Error('wildlife tracking minimap is not visible')
+  if (!(before.mapTracks > 0 && before.mapRadius >= 160)) throw new Error(`nearby wildlife tracks are not disclosed on the map: ${JSON.stringify(before)}`)
 
   await page.keyboard.down('KeyW')
   await page.waitForFunction(() => window.__game.game.run.distance > 0.65, null, { timeout: 15_000, polling: 100 })
@@ -116,6 +122,15 @@ try {
   await page.waitForTimeout(250)
   const done = await state(page)
   if (done.best < 120 || done.bestFoods < 1) throw new Error('local best score/food count did not save')
+  const endless = await page.evaluate(() => {
+    const { game } = window.__game
+    const x = 4_800; const z = -7_800
+    game.player.position.set(x, game.world.terrain.heightAt(x, z), z)
+    game.player.root.position.copy(game.player.position)
+    game.world.update(0.1, game.player.position)
+    return { x: game.player.position.x, z: game.player.position.z, chunks: game.world.chunkCount }
+  })
+  if (endless.x !== 4_800 || endless.z !== -7_800 || endless.chunks !== 25) throw new Error(`far-coordinate streaming failed: ${JSON.stringify(endless)}`)
   await desktop.close()
 
   const phone = await browser.newContext({ viewport: { width: 844, height: 390 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, locale: 'en-US' })
@@ -125,6 +140,7 @@ try {
   if (!(await phonePage.locator('.hunt-button').isVisible())) throw new Error('mobile hunt/pounce button is not visible')
   if (!(await phonePage.locator('.sprint-button').isVisible())) throw new Error('mobile sprint button is not visible')
   if (!(await phonePage.locator('.touch-stick').isVisible())) throw new Error('mobile movement stick is not visible')
+  if (!(await phonePage.locator('.minimap').isVisible())) throw new Error('mobile tracking map is not visible')
   const mobileStart = await state(phonePage)
   await phonePage.evaluate(() => window.__game.input.setTouchMove(0, 1))
   await phonePage.waitForFunction(() => window.__game.game.run.distance > 0.5, null, { timeout: 15_000, polling: 100 })
@@ -137,7 +153,7 @@ try {
   if (errors.length) throw new Error(`browser errors:\n  ${errors.join('\n  ')}`)
   await browser.close()
   cleanup()
-  console.log('smoke: OK — desktop movement/speed ramp, pounce/honey, three-only danger outcomes, local best, pause/settings and mobile touch/hunt/sprint controls')
+  console.log('smoke: OK — infinite-world map/tracks, desktop movement/speed ramp, pounce/honey, three-only danger outcomes, local best, pause/settings and mobile touch/hunt/sprint controls')
 } catch (error) {
   await fail(error?.message ?? String(error))
 }

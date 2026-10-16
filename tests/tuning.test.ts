@@ -14,13 +14,13 @@ describe('mountain-hunt tuning', () => {
     }
     tuning.apply({ 'player.moveSpeed': 6.2 })
     expect(CONFIG.player.moveSpeed).toBe(6.2)
-    expect(DEFAULT_CONFIG.player.moveSpeed).toBe(5.8)
+    expect(DEFAULT_CONFIG.player.moveSpeed).toBe(6.6)
   })
 
   it('holds next-run starting lives and speed until a hunt starts', () => {
     tuning.apply({ 'run.lives': 4, 'run.baseSpeed': 6 })
     expect(CONFIG.run.lives).toBe(3)
-    expect(CONFIG.run.baseSpeed).toBe(4.8)
+    expect(CONFIG.run.baseSpeed).toBe(6.6)
     tuning.activate('run')
     expect(CONFIG.run.lives).toBe(4)
     expect(CONFIG.run.baseSpeed).toBe(6)

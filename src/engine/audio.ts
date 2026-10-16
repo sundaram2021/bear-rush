@@ -1,5 +1,5 @@
 /** Web Audio mixer for local forest ambience and synthesized wildlife-game effects. */
-export type Sfx = 'footstep' | 'snow-step' | 'hunt' | 'forage' | 'fish-catch' | 'bear-catch' | 'bear-grunt' | 'bear-hit' | 'poison' | 'trap' | 'fall' | 'wind' | 'life-loss' | 'hurt' | 'ui' | 'win' | 'lose'
+export type Sfx = 'footstep' | 'snow-step' | 'hunt' | 'hunt-miss' | 'wildlife-alert' | 'pant' | 'forage' | 'fish-catch' | 'bear-catch' | 'bear-grunt' | 'bear-hit' | 'poison' | 'trap' | 'fall' | 'wind' | 'life-loss' | 'hurt' | 'ui' | 'win' | 'lose'
 
 export class Audio {
   readonly ctx: AudioContext
@@ -151,6 +151,9 @@ export class Audio {
       case 'footstep': noise(0.1, 80, 320, 0.2); tone(112, 68, 0.095, 'triangle', 0.12); break
       case 'snow-step': noise(0.11, 450, 4200, 0.15); tone(700, 430, 0.07, 'triangle', 0.07); break
       case 'hunt': noise(0.22, 130, 2100, 0.16); growl(154, 95, 0.25, 0.18); break
+      case 'hunt-miss': noise(0.12, 180, 1400, 0.1); growl(176, 132, 0.2, 0.09); break
+      case 'wildlife-alert': noise(0.075, 760, 4200, 0.075); tone(1120, 880, 0.11, 'triangle', 0.05); break
+      case 'pant': noise(0.34, 90, 720, 0.075); growl(202, 176, 0.25, 0.055); break
       case 'forage': noise(0.18, 360, 2800, 0.14); tone(620, 1010, 0.15, 'triangle', 0.2); tone(1010, 1320, 0.13, 'sine', 0.15, 0.06); break
       case 'fish-catch': noise(0.2, 180, 1900, 0.16); tone(440, 760, 0.14, 'triangle', 0.21); tone(760, 1020, 0.16, 'sine', 0.15, 0.06); break
       case 'bear-catch': growl(138, 96, 0.28, 0.16); noise(0.13, 190, 760, 0.08); break

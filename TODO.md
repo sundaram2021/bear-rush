@@ -1,17 +1,22 @@
-# Bear Rush — Redesign status
+# Bear Rush — Follow-up status
 
-## Implemented
+## Implemented and verified
 
-- Replaced the riverbank/lane-runner loop with a free-roaming third-person mountain-forest hunt.
-- Added continuous alpine terrain, sloped ridges, a salmon river, a carved trench, trees, shrubs, rocks, ground cover, atmospheric depth, and a changing clear/snowy weather cycle.
-- Added the bear and six score targets: salmon (120), honey (180), fawn (150), deer (260), elk (420), and moose (650). Prey flee, salmon follow the water and pounce/hunt collects targets.
-- Restricted life-loss sources to exactly three: poisonous forage, trench fall/slip, and bear traps.
-- Added an increasing speed ceiling, sprint, slope momentum, hunt/pounce, recovery and safe-ground respawn.
-- Added generated running/footstep, ambience, hunting, food and hazard sounds; accessible desktop, touch and gamepad controls; English HUD, settings and results.
-- Kept settings and personal-best records in browser-local storage only. No login, account, backend, online leaderboard or analytics.
-- Added procedural color/bump textures for terrain, bark, foliage, rocks and fur; kept assets local to the game code.
-- Verified with `pnpm typecheck`, 41 unit tests, `pnpm build`, and the desktop/mobile `pnpm smoke` suite.
+- [x] Removed the fixed world slab and player edge clamp. Global terrain, river/trench sampling, safe footing and seeded terrain/forest chunks work at distant positive and negative coordinates.
+- [x] Streamed the 5×5 nearby chunk window as the bear travels and disposed distant terrain/water buffers; scenery instances and shared materials keep draw calls and assets bounded.
+- [x] Added a north-oriented minimap with bear heading, river/trench landmarks, nearby species markers, a finite 168 m range and 24-second track fade.
+- [x] Made prey cautious and difficult to catch: movement noise/wind-carried scent affect detection, species flee differently, stamina depletes only while pursued and a close pounce must land during a short exhaustion window. Early pounces miss and give prey a recovery/escape window.
+- [x] Added short sprint stamina/recovery, a speed-responsive walk/trot/gallop gait, paired footfall timing, body/head response and sound events aligned to contacts.
+- [x] Preserved six food types and scoring, exactly three life-loss hazards, desktop/touch/gamepad controls, and browser-local-only settings/best runs.
+- [x] Added tests for far-world chunking/seams, distant safe terrain, track fading, early versus exhaustion-window pounces, gait/stamina and mobile/desktop browser flow.
+- [x] Passed `pnpm typecheck`, `pnpm test` (48 tests), `pnpm build`, `pnpm smoke`, and `git diff --check` before commit.
+- [x] Updated README and the same open pull request branch `feat/realistic-mountain-forest-hunt` / PR #2.
 
-## Remaining to reach literal real-world fidelity
+## Remaining visual limitation
 
-The game is a functioning procedural 3D redesign, but its animal and scenery meshes are not photogrammetry or production-grade wildlife models. A genuinely lifelike result still requires a complete, compatible, rigged and redistributable set for bear, deer/fawn, elk, moose and salmon, plus production environment materials. The available source checks and why no paid or license-unclear models were added are recorded in [`docs/asset-sourcing.md`](docs/asset-sourcing.md).
+This update improves world continuity, map usability, gameplay difficulty, and the bear's animation logic. It remains a procedural 3D build, not photogrammetry or a production wildlife-asset set. A literal photorealistic/AAA presentation still needs reviewed rigged bear, prey and environment art assets; no paid, unreviewed or license-unclear models were added.
+
+## Product boundaries
+
+- No logins, accounts, backend persistence, online features or analytics.
+- The player can keep travelling; only the nearby scenery chunk window remains resident.

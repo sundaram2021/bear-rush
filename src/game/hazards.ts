@@ -42,14 +42,21 @@ export class HazardField {
     return contacts.slice(0, 1)
   }
 
-  step(dt: number, terrain: Terrain): void {
+  step(dt: number, terrain: Terrain, bear?: THREE.Vector3): void {
+    const keep: Hazard[] = []
     for (const hazard of this.hazards) {
+      if (bear && Math.hypot(hazard.root.position.x - bear.x, hazard.root.position.z - bear.z) > 260) {
+        this.group.remove(hazard.root)
+        continue
+      }
       hazard.phase += dt
       if (hazard.kind === 'poison') {
         hazard.root.rotation.y = Math.sin(hazard.phase * 0.6) * 0.045
         hazard.root.position.y = terrain.heightAt(hazard.root.position.x, hazard.root.position.z) + Math.sin(hazard.phase * 1.8) * 0.035
       }
+      keep.push(hazard)
     }
+    this.hazards = keep
   }
 
   reset(): void {

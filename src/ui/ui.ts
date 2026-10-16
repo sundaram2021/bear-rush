@@ -3,8 +3,9 @@ import type { I18n } from '../engine/i18n'
 import type { Input } from '../engine/input'
 import { type Quality, type SaveData, type SaveStore } from '../engine/save'
 import { FOOD_KINDS } from '../game/config'
-import type { Hint } from '../game/game'
+import type { Hint, MapSnapshot } from '../game/game'
 import type { RunState } from '../game/rules'
+import { Minimap } from './minimap'
 
 export type Screen = 'boot' | 'title' | 'hud' | 'pause' | 'settings' | 'results'
 export type UiActions = {
@@ -21,6 +22,7 @@ export class Ui {
   private stack: Screen[] = []
   private hintKey: Hint = null
   private hudCache = new Map<string, string>()
+  private readonly minimap: Minimap
 
   constructor(
     private readonly i18n: I18n,
@@ -31,6 +33,7 @@ export class Ui {
   ) {
     this.root = document.getElementById('ui')!
     this.root.innerHTML = this.template()
+    this.minimap = new Minimap(this.root.querySelector<HTMLCanvasElement>('.minimap')!)
     this.root.addEventListener('click', e => this.onClick(e))
     this.root.addEventListener('input', e => this.onInput(e))
     window.addEventListener('keydown', e => this.onKey(e))
@@ -52,13 +55,17 @@ export class Ui {
     bar.style.transform = `scaleX(${Math.max(0.04, Math.min(1, value))})`
   }
 
-  updateHud(run: RunState, speed: number, weather: string): void {
+  updateHud(run: RunState, speed: number, weather: string, map: MapSnapshot, stamina: number): void {
     this.set('score', run.score.toLocaleString('en-US'))
     this.set('collected', String(run.collected))
     this.set('distance', `${Math.floor(run.distance)} m`)
     this.set('time', `${Math.floor(run.elapsed)} s`)
     this.set('speed', `${Math.round(speed)} m/s`)
     this.set('weather', this.i18n.t(weather === 'Snowing' ? 'weather.snow' : weather === 'Changing' ? 'weather.change' : 'weather.clear'))
+    this.set('stamina', `${Math.round(stamina * 100)}%`)
+    const staminaFill = this.root.querySelector<HTMLElement>('.stamina-bar i')
+    if (staminaFill) staminaFill.style.transform = `scaleX(${Math.max(0, Math.min(1, stamina))})`
+    this.minimap.draw(map)
     for (const kind of FOOD_KINDS) this.set(kind, String(run.tally[kind]))
     for (const [index, life] of [...this.root.querySelectorAll<HTMLElement>('.life')].entries()) life.classList.toggle('is-empty', index >= run.lives)
   }
@@ -210,7 +217,7 @@ export class Ui {
     return /* html */ `
 <section class="screen screen-boot is-active" data-screen="boot"><img class="boot-mark" src="/favicon.png" alt="" /><div class="boot-logo" data-i18n="game.title"></div><div class="boot-bar"><i></i></div><div class="boot-label" data-i18n="boot.loading"></div></section>
 <section class="screen screen-title" data-screen="title"><div class="title-vignette"></div><div class="title-best is-hidden"></div><div class="title-block"><div class="eyebrow" data-i18n="game.eyebrow"></div><div class="logo"><span class="logo-mark" aria-hidden="true">▲</span><h1 class="logo-text" data-i18n="game.title"></h1></div><p class="tagline" data-i18n="game.tagline"></p><div class="controls-card"><b data-i18n="controls.title"></b><span data-i18n="controls.desktop"></span><span data-i18n="controls.touch"></span><span data-i18n="controls.goal"></span><span data-i18n="controls.hazards"></span></div><nav class="menu"><button data-nav class="btn btn-primary" data-action="play"><span data-i18n="menu.play"></span></button><button data-nav class="btn" data-action="settings"><span data-i18n="menu.settings"></span></button></nav><p class="privacy-note" data-i18n="settings.privacy"></p></div><footer class="bottom-bar" data-i18n="game.footer"></footer></section>
-<section class="screen screen-hud" data-screen="hud"><div class="hurt-vignette"></div><div class="popups"></div><div class="hud-left"><div class="hud-chip"><span data-i18n="hud.score"></span><b data-slot="score">0</b></div><div class="hud-chip"><span data-i18n="hud.food"></span><b data-slot="collected">0</b></div><div class="food-stats">${foods}</div></div><div class="hud-center"><div class="hud-distance"><span data-i18n="hud.distance"></span><b data-slot="distance">0 m</b></div><div class="hud-meta"><span data-slot="time">0 s</span><i>·</i><span data-slot="speed">0 m/s</span></div></div><div class="hud-right"><span class="weather-chip"><i>◌</i><b data-slot="weather">Clear</b></span><div class="lives" aria-label="Lives"><span class="life">♥</span><span class="life">♥</span><span class="life">♥</span></div><button class="hud-pause" data-action="pause" data-i18n-label="hud.pause" aria-label="Pause">Ⅱ</button></div><div class="tutorial-hint"></div><button class="hunt-button" data-action="catch" data-touch="catch" data-i18n-label="controls.hunt" aria-label="Pounce and hunt"><span data-i18n="controls.huntButton"></span></button><button class="sprint-button" data-touch="sprint" data-i18n-label="controls.sprint" aria-label="Sprint"><span data-i18n="controls.sprintButton"></span></button><div class="touch"><div class="touch-stick"><i></i></div></div></section>
+<section class="screen screen-hud" data-screen="hud"><div class="hurt-vignette"></div><div class="popups"></div><div class="hud-left"><div class="hud-chip"><span data-i18n="hud.score"></span><b data-slot="score">0</b></div><div class="hud-chip"><span data-i18n="hud.food"></span><b data-slot="collected">0</b></div><div class="food-stats">${foods}</div></div><div class="hud-center"><div class="hud-distance"><span data-i18n="hud.distance"></span><b data-slot="distance">0 m</b></div><div class="hud-meta"><span data-slot="time">0 s</span><i>·</i><span data-slot="speed">0 m/s</span></div><div class="stamina-label"><span data-i18n="hud.stamina"></span><b data-slot="stamina">100%</b></div><div class="stamina-bar"><i></i></div></div><div class="hud-right"><span class="weather-chip"><i>◌</i><b data-slot="weather">Clear</b></span><div class="lives" aria-label="Lives"><span class="life">♥</span><span class="life">♥</span><span class="life">♥</span></div><button class="hud-pause" data-action="pause" data-i18n-label="hud.pause" aria-label="Pause">Ⅱ</button><div class="map-card"><div class="map-title" data-i18n="hud.map"></div><canvas class="minimap" data-i18n-label="hud.map.label" aria-label="Wildlife tracking map"></canvas><div class="map-legend" data-i18n="hud.map.legend"></div></div></div><div class="tutorial-hint"></div><button class="hunt-button" data-action="catch" data-touch="catch" data-i18n-label="controls.hunt" aria-label="Pounce and hunt"><span data-i18n="controls.huntButton"></span></button><button class="sprint-button" data-touch="sprint" data-i18n-label="controls.sprint" aria-label="Sprint"><span data-i18n="controls.sprintButton"></span></button><div class="touch"><div class="touch-stick"><i></i></div></div></section>
 <section class="screen screen-modal" data-screen="pause"><div class="modal"><div class="eyebrow" data-i18n="game.eyebrow"></div><h2 class="modal-title" data-i18n="pause.title"></h2><p data-i18n="pause.message"></p><nav class="menu"><button data-nav class="btn btn-primary" data-action="resume"><span data-i18n="menu.resume"></span></button><button data-nav class="btn" data-action="restart"><span data-i18n="menu.retry"></span></button><button data-nav class="btn" data-action="settings"><span data-i18n="menu.settings"></span></button><button data-nav class="btn" data-action="quit"><span data-i18n="menu.title"></span></button></nav></div></section>
 <section class="screen screen-modal" data-screen="settings"><div class="modal modal-settings"><div class="eyebrow" data-i18n="game.eyebrow"></div><h2 class="modal-title" data-i18n="settings.title"></h2><fieldset><legend data-i18n="settings.audio"></legend>${range('musicVolume', 'settings.ambience')}${range('sfxVolume', 'settings.effects')}${toggle('muted', 'settings.mute')}</fieldset><fieldset><legend data-i18n="settings.display"></legend><div class="setting-row"><span data-i18n="settings.quality"></span><div class="seg" data-setting="quality"><button data-nav data-value="low" data-i18n="settings.quality.low"></button><button data-nav data-value="medium" data-i18n="settings.quality.medium"></button><button data-nav data-value="high" data-i18n="settings.quality.high"></button></div></div>${toggle('reducedMotion', 'settings.reducedMotion')}</fieldset><p class="privacy-note" data-i18n="settings.privacy"></p><nav class="menu menu-row"><button data-nav class="btn" data-action="back"><span data-i18n="menu.back"></span></button></nav></div></section>
 <section class="screen screen-modal" data-screen="results"><div class="modal modal-results"><div class="eyebrow" data-i18n="game.eyebrow"></div><h2 class="results-title modal-title" data-i18n="results.title"></h2><p class="results-message" data-i18n="results.message"></p><div class="results-best"></div><dl class="results-table"><div><dt data-i18n="results.food"></dt><dd class="r-collected">0</dd></div><div><dt data-i18n="results.score"></dt><dd class="r-score">0</dd></div><div><dt data-i18n="results.distance"></dt><dd class="r-distance">0 m</dd></div><div><dt data-i18n="results.time"></dt><dd class="r-time">0 s</dd></div><div><dt data-i18n="results.best"></dt><dd class="r-best">0</dd></div></dl><div class="result-foods">${resultFoods}</div><nav class="menu menu-row"><button data-nav class="btn btn-primary" data-action="restart"><span data-i18n="menu.retry"></span></button><button data-nav class="btn" data-action="quit"><span data-i18n="menu.title"></span></button></nav></div></section>`
