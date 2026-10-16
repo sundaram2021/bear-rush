@@ -1,198 +1,111 @@
 import * as THREE from 'three'
 import { CONFIG } from './config'
+import { seededRandom, smoothstep } from './noise'
+import { Terrain } from './terrain'
+import { createNaturalTexture } from './textures'
 
-export type RiverVector = { x: number; y: number; z: number }
-type SwayTree = { root: THREE.Group; phase: number; amount: number }
-type Foam = { mesh: THREE.Mesh; z: number; offset: number; pace: number; phase: number }
+type Tree = { root: THREE.Group; phase: number; sway: number }
 
-/** Full forest valley and the shared height/bend functions used by fish and floating hazards. */
+/** Naturalistic, continuous mountain terrain. The gameplay samples this same surface. */
 export class World {
   readonly scene = new THREE.Scene()
-  readonly riverWidth = CONFIG.world.riverWidth
-  private readonly water: THREE.Mesh
-  private waterTime?: { value: number }
-  private readonly trees: SwayTree[] = []
-  private readonly foam: Foam[] = []
+  readonly terrain = new Terrain()
+  private readonly ground: THREE.MeshStandardMaterial
+  private readonly trees: Tree[] = []
+  private readonly foliageMaterials: THREE.MeshStandardMaterial[] = []
+  private snow!: THREE.Points
+  private snowPositions!: Float32Array
+  private waterMaterial?: THREE.MeshPhysicalMaterial
   private time = 0
-  private current = CONFIG.run.startSpeed
-  private readonly endZ = CONFIG.world.endZ
+  private snowAmount = 0
 
   constructor() {
-    this.scene.background = new THREE.Color('#9ab9b0')
-    this.scene.fog = new THREE.FogExp2('#9ab9b0', 0.0053)
-
-    const hemisphere = new THREE.HemisphereLight('#e7f4e9', '#344737', 1.55)
+    this.scene.background = new THREE.Color('#9db3bd')
+    this.scene.fog = new THREE.FogExp2('#9db3bd', 0.0038)
+    const hemisphere = new THREE.HemisphereLight('#dce8ed', '#394538', 1.65)
     this.scene.add(hemisphere)
-    const sun = new THREE.DirectionalLight('#fff1d0', 2.35)
-    sun.position.set(-34, 56, 22)
+    const sun = new THREE.DirectionalLight('#fff1d3', 3.1)
+    sun.position.set(-42, 72, 38)
     sun.castShadow = true
-    sun.shadow.mapSize.set(1536, 1536)
-    sun.shadow.camera.left = -48
-    sun.shadow.camera.right = 48
-    sun.shadow.camera.top = 60
-    sun.shadow.camera.bottom = -60
-    sun.shadow.camera.near = 0.5
+    sun.shadow.mapSize.set(2048, 2048)
+    sun.shadow.camera.left = -68
+    sun.shadow.camera.right = 68
+    sun.shadow.camera.top = 76
+    sun.shadow.camera.bottom = -76
+    sun.shadow.camera.near = 1
     sun.shadow.camera.far = 210
+    sun.shadow.bias = -0.00015
+    sun.shadow.normalBias = 0.025
     this.scene.add(sun)
-    const fill = new THREE.DirectionalLight('#8bb6c5', 0.55)
-    fill.position.set(35, 14, -35)
-    this.scene.add(fill)
+    const skyFill = new THREE.DirectionalLight('#a7c8df', 0.72)
+    skyFill.position.set(42, 20, -48)
+    this.scene.add(skyFill)
 
-    this.addDistantRidges()
-    this.addBanks()
-    const waterMaterial = this.makeWaterMaterial()
-    this.water = new THREE.Mesh(this.makeRiverGeometry(), waterMaterial)
-    this.water.receiveShadow = true
-    this.water.renderOrder = 1
-    this.scene.add(this.water)
-    this.addCascade()
+    this.ground = this.terrain.createMaterial()
+    const groundMesh = new THREE.Mesh(this.terrain.createGeometry(), this.ground)
+    groundMesh.receiveShadow = true
+    groundMesh.castShadow = false
+    this.scene.add(groundMesh)
+    this.addWater()
     this.addForest()
-    this.addRiversideDetails()
-    this.addFoam()
+    this.addRocks()
+    this.addAlpineGroundCover()
+    this.addSnow()
   }
 
-  /** World-space centerline position plus a lateral offset, sampled at the requested river z. */
-  riverPoint(z: number, offset = 0, lift = 0): THREE.Vector3 {
-    return new THREE.Vector3(this.riverCenterX(z) + offset, this.waterHeight(z) + lift, z)
+  get weatherLabel(): 'Clear' | 'Changing' | 'Snowing' {
+    if (this.snowAmount > 0.68) return 'Snowing'
+    if (this.snowAmount < 0.32) return 'Clear'
+    return 'Changing'
   }
 
-  /** Slope-aware downstream tangent; the flow axis is positive z. */
-  riverTangent(z: number): THREE.Vector3 {
-    const h = 0.7
-    const dx = this.riverCenterX(z + h) - this.riverCenterX(z - h)
-    const dy = this.waterHeight(z + h) - this.waterHeight(z - h)
-    return new THREE.Vector3(dx, dy, h * 2).normalize()
-  }
+  get weatherIntensity(): number { return this.snowAmount }
 
-  /** A safe walkable strip on the right bank. Offset is measured out from the river edge. */
-  bankPoint(z: number, side = 1, offset = 1.1): THREE.Vector3 {
-    const outward = this.riverWidth * 0.5 + offset
-    const x = this.riverCenterX(z) + side * outward
-    const y = this.waterHeight(z) + this.bankRise(z, offset)
-    return new THREE.Vector3(x, y, z)
-  }
-
-  waterHeight(z: number): number {
-    return 0.16 + Math.sin(z * 0.035 + 0.7) * 0.26 + Math.sin(z * 0.089 - 0.8) * 0.09
-  }
-
-  riverCenterX(z: number): number {
-    return 3.45 * Math.sin(z * 0.037) + 1.15 * Math.sin(z * 0.083 + 0.7) + 0.35 * Math.sin(z * 0.017 + 1.3)
-  }
-
-  update(dt: number, speed = this.current): void {
-    this.time += dt
-    this.current = speed
-    if (this.waterTime) this.waterTime.value = this.time
+  update(dt: number): void {
+    this.time += Math.max(0, dt)
+    const period = CONFIG.world.seasonPeriod
+    this.snowAmount = 0.5 + 0.5 * Math.sin((this.time / period) * Math.PI * 2 - Math.PI / 2)
+    this.snowAmount = smoothstep(0.12, 0.9, this.snowAmount)
+    this.terrain.setSnow(this.ground, this.snowAmount)
+    const waterShader = this.waterMaterial?.userData.shader as { uniforms?: Record<string, { value: number }> } | undefined
+    if (waterShader?.uniforms?.uWaterTime) waterShader.uniforms.uWaterTime.value = this.time
+    const clear = new THREE.Color('#9bb5bd')
+    const snowSky = new THREE.Color('#d2dce1')
+    const fog = clear.clone().lerp(snowSky, this.snowAmount * 0.75)
+    ;(this.scene.background as THREE.Color).copy(fog)
+    if (this.scene.fog instanceof THREE.FogExp2) this.scene.fog.color.copy(fog)
     for (const tree of this.trees) {
-      tree.root.rotation.z = Math.sin(this.time * 0.68 + tree.phase) * tree.amount
-      tree.root.rotation.x = Math.cos(this.time * 0.44 + tree.phase * 1.7) * tree.amount * 0.32
+      tree.root.rotation.z = Math.sin(this.time * 0.55 + tree.phase) * tree.sway * (0.7 + this.snowAmount * 0.4)
+      tree.root.rotation.x = Math.cos(this.time * 0.38 + tree.phase * 1.6) * tree.sway * 0.27
     }
-    for (const streak of this.foam) {
-      streak.z += speed * streak.pace * dt
-      if (streak.z > this.endZ) streak.z = CONFIG.world.startZ + ((streak.phase * 17) % 26)
-      const p = this.riverPoint(streak.z, streak.offset, 0.105 + Math.sin(this.time * 2.2 + streak.phase) * 0.035)
-      streak.mesh.position.copy(p)
-      const tangent = this.riverTangent(streak.z)
-      streak.mesh.rotation.set(Math.atan2(-tangent.y, Math.hypot(tangent.x, tangent.z)), Math.atan2(tangent.x, tangent.z), 0)
-      streak.mesh.scale.x = 0.75 + 0.35 * Math.sin(this.time * 2.8 + streak.phase)
-    }
+    const green = new THREE.Color('#ffffff')
+    const winter = new THREE.Color('#e2e9e8')
+    this.foliageMaterials.forEach((material, i) => material.color.copy(green).lerp(winter, this.snowAmount * (0.22 + (i % 3) * 0.06)))
+    this.animateSnow(dt)
   }
 
-  private bankRise(z: number, offset: number): number {
-    return 0.24 + Math.min(2.5, offset * 0.42) + Math.sin(z * 0.15 + offset * 0.55) * 0.09
-  }
-
-  private makeWaterMaterial(): THREE.MeshPhysicalMaterial {
-    const material = new THREE.MeshPhysicalMaterial({
-      color: '#287f88', roughness: 0.22, metalness: 0.1, clearcoat: 0.58, clearcoatRoughness: 0.24,
-      side: THREE.DoubleSide, vertexColors: true,
-    })
-    material.onBeforeCompile = shader => {
-      shader.uniforms.uRiverTime = { value: 0 }
-      this.waterTime = shader.uniforms.uRiverTime
-      shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nuniform float uRiverTime;')
-      shader.vertexShader = shader.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
-        float riverWaveA = sin(position.x * 1.25 + position.z * 0.12 + uRiverTime * 2.3);
-        float riverWaveB = sin(position.x * 2.4 - position.z * 0.19 - uRiverTime * 1.45);
-        transformed.y += riverWaveA * 0.045 + riverWaveB * 0.025;`)
-    }
-    material.customProgramCacheKey = () => 'bear-rush-river-waves-v2'
-    return material
-  }
-
-  private makeRiverGeometry(): THREE.BufferGeometry {
-    const segments = CONFIG.world.riverSegments
-    const across = 14
-    const start = CONFIG.world.startZ
-    const end = CONFIG.world.endZ
+  private addWater(): void {
+    const segments = 260
+    const across = 12
     const positions: number[] = []
     const colors: number[] = []
-    const uvs: number[] = []
     const indices: number[] = []
-    const deep = new THREE.Color('#1e747d')
-    const shallows = new THREE.Color('#4c9b95')
+    const deep = new THREE.Color('#174c58')
+    const shallows = new THREE.Color('#629493')
     for (let i = 0; i <= segments; i += 1) {
-      const z = start + (i / segments) * (end - start)
-      const center = this.riverCenterX(z)
-      const surface = this.waterHeight(z)
+      const z = -CONFIG.world.halfSize * 0.95 + (i / segments) * CONFIG.world.halfSize * 1.9
+      const center = this.terrain.riverX(z)
+      const y = this.terrain.waterY(z)
       for (let j = 0; j <= across; j += 1) {
         const u = j / across
-        const lateral = (u - 0.5) * this.riverWidth
-        positions.push(center + lateral, surface + Math.sin(u * Math.PI) * 0.035, z)
-        const shade = Math.pow(Math.abs(u - 0.5) * 2, 1.8)
-        const color = deep.clone().lerp(shallows, shade * 0.66)
-        colors.push(color.r, color.g, color.b)
-        uvs.push(u, i / segments)
+        const xOffset = (u - 0.5) * CONFIG.world.riverWidth
+        positions.push(center + xOffset, y + Math.sin(this.time + i * 0.17 + j * 0.6) * 0.012, z)
+        const c = deep.clone().lerp(shallows, Math.pow(Math.abs(u - 0.5) * 2, 1.45) * 0.55)
+        colors.push(c.r, c.g, c.b)
         if (i < segments && j < across) {
           const a = i * (across + 1) + j
-          const b = a + 1
-          const c = a + across + 1
-          const d = c + 1
-          indices.push(a, c, b, b, c, d)
-        }
-      }
-    }
-    const geometry = new THREE.BufferGeometry()
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
-    geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3))
-    geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2))
-    geometry.setIndex(indices)
-    geometry.computeVertexNormals()
-    return geometry
-  }
-
-  private makeBank(side: number): THREE.Mesh {
-    const segments = 220
-    const across = 12
-    const start = CONFIG.world.startZ
-    const end = CONFIG.world.endZ
-    const depth = CONFIG.world.bankDepth
-    const positions: number[] = []
-    const colors: number[] = []
-    const indices: number[] = []
-    const shoreline = new THREE.Color('#7d8063')
-    const moss = new THREE.Color('#55724b')
-    const canopyShade = new THREE.Color('#314f3a')
-    for (let i = 0; i <= segments; i += 1) {
-      const z = start + (i / segments) * (end - start)
-      const center = this.riverCenterX(z)
-      const waterY = this.waterHeight(z)
-      for (let j = 0; j <= across; j += 1) {
-        const t = j / across
-        const offset = 0.08 + t * depth
-        const ridge = Math.sin(z * 0.11 + t * 7.2 + side) * 0.22 + Math.sin(z * 0.037 - t * 12) * 0.3
-        const h = this.bankRise(z, offset) + ridge * (0.3 + t)
-        positions.push(center + side * (this.riverWidth * 0.5 + offset), waterY + h, z)
-        const color = t < 0.08 ? shoreline.clone().lerp(moss, t / 0.08) : moss.clone().lerp(canopyShade, Math.max(0, t - 0.68) * 1.7)
-        const noise = 0.88 + 0.12 * (0.5 + 0.5 * Math.sin(z * 0.21 + t * 13.4))
-        colors.push(color.r * noise, color.g * noise, color.b * noise)
-        if (i < segments && j < across) {
-          const a = i * (across + 1) + j
-          const b = a + 1
-          const c = a + across + 1
-          const d = c + 1
-          indices.push(a, c, b, b, c, d)
+          const b = a + across + 1
+          indices.push(a, b, a + 1, a + 1, b, b + 1)
         }
       }
     }
@@ -201,215 +114,202 @@ export class World {
     geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3))
     geometry.setIndex(indices)
     geometry.computeVertexNormals()
-    const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.98, side: THREE.DoubleSide })
-    const mesh = new THREE.Mesh(geometry, material)
-    mesh.receiveShadow = true
-    mesh.frustumCulled = false
-    return mesh
-  }
-
-  private addBanks(): void {
-    this.scene.add(this.makeBank(-1), this.makeBank(1))
-    const pathMat = new THREE.MeshStandardMaterial({ color: '#8a7957', roughness: 1, side: THREE.DoubleSide })
-    for (let side of [-1, 1]) {
-      const points: THREE.Vector3[] = []
-      for (let z = CONFIG.world.startZ; z <= CONFIG.world.endZ; z += 2.4) {
-        const p = this.bankPoint(z, side, 1.2)
-        points.push(new THREE.Vector3(p.x, p.y + 0.04, z))
-      }
-      const curve = new THREE.CatmullRomCurve3(points)
-      const verts: number[] = []
-      const inds: number[] = []
-      for (let i = 0; i <= 220; i += 1) {
-        const z = CONFIG.world.startZ + (i / 220) * (CONFIG.world.endZ - CONFIG.world.startZ)
-        const p = curve.getPoint(i / 220)
-        const bankTangent = this.riverTangent(z)
-        const widthX = bankTangent.z * 0.95
-        const widthZ = -bankTangent.x * 0.95
-        verts.push(p.x - widthX, p.y, p.z - widthZ, p.x + widthX, p.y + 0.02, p.z + widthZ)
-        if (i < 220) {
-          const a = i * 2
-          inds.push(a, a + 2, a + 1, a + 1, a + 2, a + 3)
-        }
-      }
-      const geometry = new THREE.BufferGeometry()
-      geometry.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3))
-      geometry.setIndex(inds)
-      geometry.computeVertexNormals()
-      const mesh = new THREE.Mesh(geometry, pathMat)
-      mesh.receiveShadow = true
-      this.scene.add(mesh)
+    const material = new THREE.MeshPhysicalMaterial({ color: '#ffffff', vertexColors: true, roughness: 0.2, metalness: 0.08, clearcoat: 0.62, clearcoatRoughness: 0.18, side: THREE.DoubleSide })
+    material.onBeforeCompile = shader => {
+      shader.uniforms.uWaterTime = { value: 0 }
+      ;(material.userData as { shader?: typeof shader }).shader = shader
+      shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nuniform float uWaterTime;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\ntransformed.y += sin(position.x * 1.8 + uWaterTime * 1.4) * 0.035 + sin(position.z * 0.5 - uWaterTime * 0.9) * 0.025;')
     }
-  }
-
-  private addDistantRidges(): void {
-    const ridgeMats = ['#70867a', '#7c9383', '#8ca093'].map(color => new THREE.MeshStandardMaterial({ color, roughness: 1, flatShading: true, fog: true }))
-    for (let i = 0; i < 13; i += 1) {
-      const h = 22 + (i % 5) * 5
-      const ridge = new THREE.Mesh(new THREE.ConeGeometry(14 + (i % 3) * 4, h, 7, 2), ridgeMats[i % ridgeMats.length])
-      ridge.position.set(-80 + i * 13.5, h * 0.34 - 4, -190 - (i % 4) * 5)
-      ridge.rotation.z = (i % 2 ? 1 : -1) * 0.11
-      this.scene.add(ridge)
-    }
-  }
-
-  private addCascade(): void {
-    const z = CONFIG.world.startZ + 15
-    const centerX = this.riverCenterX(z)
-    const rock = new THREE.MeshStandardMaterial({ color: '#6f7668', roughness: 0.96, flatShading: true })
-    const cliff = new THREE.Mesh(new THREE.DodecahedronGeometry(16, 1), rock)
-    cliff.scale.set(1.8, 0.95, 0.42)
-    cliff.position.set(centerX, 5.6, z - 7)
-    this.scene.add(cliff)
-    const falls = new THREE.Group()
-    const waterMat = new THREE.MeshPhysicalMaterial({ color: '#cce9e4', transparent: true, opacity: 0.77, roughness: 0.14, metalness: 0.05, side: THREE.DoubleSide })
-    for (let i = -1; i <= 1; i += 1) {
-      const sheet = new THREE.Mesh(new THREE.PlaneGeometry(2.4 + (i === 0 ? 1.2 : 0), 8.5), waterMat)
-      sheet.position.set(centerX + i * 2.5, 3.9, z - 2.4)
-      sheet.rotation.z = Math.sin(i * 0.6) * 0.06
-      falls.add(sheet)
-    }
-    const foam = new THREE.Mesh(new THREE.SphereGeometry(4.8, 20, 12), new THREE.MeshBasicMaterial({ color: '#d8eee4', transparent: true, opacity: 0.33 }))
-    foam.scale.set(1.3, 0.12, 1.2)
-    foam.position.set(centerX, 0.34, z + 1.7)
-    falls.add(foam)
-    this.scene.add(falls)
-    const spray = new THREE.PointLight('#d5f5ee', 1.1, 24)
-    spray.position.set(centerX, 3.2, z + 1)
-    this.scene.add(spray)
+    material.customProgramCacheKey = () => 'bear-rush-mountain-water-v1'
+    this.waterMaterial = material
+    const water = new THREE.Mesh(geometry, material)
+    water.receiveShadow = true
+    water.renderOrder = 1
+    this.scene.add(water)
   }
 
   private addForest(): void {
-    const bark = new THREE.MeshStandardMaterial({ color: '#4b3327', roughness: 1, flatShading: true })
-    const barkLight = new THREE.MeshStandardMaterial({ color: '#76503a', roughness: 1, flatShading: true })
-    const leafMats = ['#234c38', '#2c5a3e', '#386748', '#476f4e'].map(color => new THREE.MeshStandardMaterial({ color, roughness: 1, flatShading: true }))
-    const broadMats = ['#38614a', '#4a7050', '#5b7950'].map(color => new THREE.MeshStandardMaterial({ color, roughness: 0.98, flatShading: true }))
-    const trunkGeo = new THREE.CylinderGeometry(0.19, 0.42, 1, 7)
-    const pineGeo = [new THREE.ConeGeometry(1.45, 2.15, 8, 2), new THREE.ConeGeometry(1.18, 2.05, 8, 2), new THREE.ConeGeometry(0.9, 1.75, 8, 2)]
-    const broadGeo = new THREE.SphereGeometry(1, 9, 7)
-    const rng = random(615477)
-    for (let z = CONFIG.world.startZ + 22; z < CONFIG.world.endZ + 18; z += 7.5) {
-      for (const side of [-1, 1]) {
-        const count = 1 + (rng() > 0.42 ? 1 : 0)
-        for (let n = 0; n < count; n += 1) {
-          const offset = 6.5 + rng() * 18
-          const p = this.bankPoint(z + (rng() - 0.5) * 5, side, offset)
-          const h = 5.7 + rng() * 5.8
-          const root = new THREE.Group()
-          const trunk = new THREE.Mesh(trunkGeo, rng() < 0.24 ? barkLight : bark)
-          trunk.position.y = h * 0.34
-          trunk.scale.set(1, h * 0.68, 1)
-          trunk.castShadow = true
-          root.add(trunk)
-          if (rng() < 0.18) {
-            for (let c = 0; c < 4; c += 1) {
-              const crown = new THREE.Mesh(broadGeo, broadMats[Math.floor(rng() * broadMats.length)])
-              crown.position.set((rng() - 0.5) * 1.1, h * (0.57 + rng() * 0.2), (rng() - 0.5) * 0.8)
-              crown.scale.set(1.15 + rng() * 0.55, 0.85 + rng() * 0.5, 1.05 + rng() * 0.5)
-              crown.castShadow = true
-              root.add(crown)
-            }
-          } else {
-            for (let tier = 0; tier < 3; tier += 1) {
-              const crown = new THREE.Mesh(pineGeo[tier], leafMats[Math.floor(rng() * leafMats.length)])
-              crown.position.y = h * (0.36 + tier * 0.17)
-              crown.scale.setScalar(0.74 + rng() * 0.36)
-              crown.rotation.y = rng() * 0.8
-              crown.castShadow = true
-              root.add(crown)
-            }
-          }
-          root.position.set(p.x, p.y, p.z)
-          root.rotation.y = rng() * Math.PI
-          this.scene.add(root)
-          this.trees.push({ root, phase: rng() * Math.PI * 2, amount: 0.012 + rng() * 0.023 })
-        }
-      }
-    }
-    this.addFarGroundTrees(rng, trunkGeo, pineGeo, bark, leafMats)
-  }
-
-  private addFarGroundTrees(rng: () => number, trunkGeo: THREE.BufferGeometry, pineGeo: THREE.BufferGeometry[], bark: THREE.Material, leafMats: THREE.Material[]): void {
-    for (let side of [-1, 1]) {
-      for (let i = 0; i < 32; i += 1) {
-        const z = CONFIG.world.startZ + 10 + rng() * 195
-        const offset = 18 + rng() * 42
-        const p = this.bankPoint(z, side, offset)
-        const height = 7 + rng() * 9
-        const root = new THREE.Group()
-        const trunk = new THREE.Mesh(trunkGeo, bark)
-        trunk.scale.set(0.9, height * 0.72, 0.9)
-        trunk.position.y = height * 0.36
-        root.add(trunk)
-        for (let tier = 0; tier < 3; tier += 1) {
-          const crown = new THREE.Mesh(pineGeo[tier], leafMats[Math.floor(rng() * leafMats.length)])
-          crown.position.y = height * (0.34 + tier * 0.18)
-          crown.scale.setScalar(1.2 + rng() * 0.7)
+    const random = seededRandom(880127)
+    const barkTexture = createNaturalTexture('bark')
+    const barkBump = barkTexture?.clone()
+    if (barkBump) { barkBump.colorSpace = THREE.NoColorSpace; barkBump.needsUpdate = true }
+    const leafTexture = createNaturalTexture('foliage')
+    const leafBump = leafTexture?.clone()
+    if (leafBump) { leafBump.colorSpace = THREE.NoColorSpace; leafBump.needsUpdate = true }
+    const bark = new THREE.MeshStandardMaterial({ color: '#ffffff', map: barkTexture ?? undefined, bumpMap: barkBump ?? undefined, bumpScale: 0.16, roughness: 0.98 })
+    const barkLight = new THREE.MeshStandardMaterial({ color: '#ffffff', map: barkTexture ?? undefined, bumpMap: barkBump ?? undefined, bumpScale: 0.13, roughness: 0.98 })
+    const leafColors = ['#edf2e5', '#e4ead7', '#eff0d8', '#e4e8d3']
+    leafColors.forEach(color => this.foliageMaterials.push(new THREE.MeshStandardMaterial({ color, map: leafTexture ?? undefined, bumpMap: leafBump ?? undefined, bumpScale: 0.07, roughness: 0.96 })))
+    const trunkGeo = new THREE.CylinderGeometry(0.24, 0.58, 1, 20, 4)
+    const crownGeo = [
+      new THREE.ConeGeometry(1.8, 3.1, 28, 4),
+      new THREE.ConeGeometry(1.55, 2.8, 28, 4),
+      new THREE.ConeGeometry(1.28, 2.5, 28, 4),
+    ]
+    const broadLeaf = new THREE.SphereGeometry(1, 24, 16)
+    for (let i = 0; i < 120; i += 1) {
+      const angle = random() * Math.PI * 2
+      const radius = 19 + random() * 86
+      const x = Math.cos(angle) * radius
+      const z = Math.sin(angle) * radius
+      if (Math.abs(x) > CONFIG.world.halfSize - 8 || Math.abs(z) > CONFIG.world.halfSize - 8) continue
+      if (Math.abs(x - this.terrain.riverX(z)) < 10 || this.terrain.trenchDistance(x, z) < 8) continue
+      const ground = this.terrain.sample(x, z)
+      if (ground.slope > 0.8) continue
+      const height = 8.2 + random() * 8.7
+      const root = new THREE.Group()
+      const trunk = new THREE.Mesh(trunkGeo, random() < 0.22 ? barkLight : bark)
+      trunk.position.y = height * 0.34
+      trunk.scale.set(0.72 + random() * 0.4, height * 0.72, 0.72 + random() * 0.4)
+      trunk.castShadow = true
+      root.add(trunk)
+      const isBroadleaf = random() < 0.2
+      if (isBroadleaf) {
+        for (let leaf = 0; leaf < 6; leaf += 1) {
+          const crown = new THREE.Mesh(broadLeaf, this.foliageMaterials[Math.floor(random() * this.foliageMaterials.length)])
+          crown.position.set((random() - 0.5) * 2.1, height * (0.62 + random() * 0.26), (random() - 0.5) * 1.9)
+          crown.scale.set(1.5 + random() * 1.1, 1.1 + random() * 0.7, 1.4 + random() * 0.9)
+          crown.castShadow = true
           root.add(crown)
         }
-        root.position.copy(p)
-        root.rotation.y = rng() * Math.PI
-        this.scene.add(root)
-        this.trees.push({ root, phase: rng() * Math.PI * 2, amount: 0.007 + rng() * 0.012 })
-      }
-    }
-  }
-
-  private addRiversideDetails(): void {
-    const rng = random(9931)
-    const rockGeo = new THREE.DodecahedronGeometry(0.58, 1)
-    const rockMats = ['#5d6656', '#697362', '#777968', '#827d69'].map(color => new THREE.MeshStandardMaterial({ color, roughness: 0.97, flatShading: true }))
-    const fernMats = ['#315c40', '#47734d', '#61804c'].map(color => new THREE.MeshStandardMaterial({ color, roughness: 0.9, flatShading: true, side: THREE.DoubleSide }))
-    const stemGeo = new THREE.ConeGeometry(0.085, 0.9, 5, 1)
-    for (let i = 0; i < 132; i += 1) {
-      const z = CONFIG.world.startZ + 7 + rng() * (CONFIG.world.endZ - CONFIG.world.startZ - 8)
-      const side = rng() < 0.5 ? -1 : 1
-      const offset = 0.25 + rng() * 3.8
-      const p = this.bankPoint(z, side, offset)
-      if (rng() < 0.66) {
-        const rock = new THREE.Mesh(rockGeo, rockMats[Math.floor(rng() * rockMats.length)])
-        rock.position.copy(p)
-        rock.position.y -= 0.18
-        rock.scale.set(0.8 + rng() * 1.4, 0.45 + rng() * 0.6, 0.8 + rng() * 1.35)
-        rock.rotation.set(rng() * 0.25, rng() * Math.PI, rng() * 0.2)
-        rock.castShadow = true
-        rock.receiveShadow = true
-        this.scene.add(rock)
       } else {
-        const fern = new THREE.Group()
-        for (let leaf = 0; leaf < 5; leaf += 1) {
-          const blade = new THREE.Mesh(stemGeo, fernMats[Math.floor(rng() * fernMats.length)])
-          blade.position.set(Math.cos(leaf * 1.25) * 0.36, 0.35, Math.sin(leaf * 1.25) * 0.36)
-          blade.rotation.z = -0.45 - rng() * 0.55
-          blade.rotation.y = leaf * 1.25
-          blade.scale.y = 0.8 + rng() * 0.9
-          fern.add(blade)
+        const turn = random() * Math.PI * 2
+        for (let tier = 0; tier < crownGeo.length; tier += 1) {
+          const crown = new THREE.Mesh(crownGeo[tier], this.foliageMaterials[Math.floor(random() * this.foliageMaterials.length)])
+          crown.position.y = height * (0.37 + tier * 0.145)
+          crown.scale.set(0.68 + random() * 0.5, 0.82 + random() * 0.42, 0.68 + random() * 0.5)
+          crown.rotation.y = turn + tier * 0.7
+          crown.castShadow = true
+          root.add(crown)
         }
-        fern.position.copy(p)
-        fern.rotation.y = rng() * Math.PI
-        this.scene.add(fern)
+      }
+      root.position.set(x, ground.height, z)
+      root.rotation.y = random() * Math.PI * 2
+      this.scene.add(root)
+      this.trees.push({ root, phase: random() * Math.PI * 2, sway: 0.008 + random() * 0.014 })
+    }
+    this.addShrubs(random)
+  }
+
+  private addShrubs(random: () => number): void {
+    const geometry = new THREE.SphereGeometry(1, 18, 14)
+    const leafTexture = createNaturalTexture('foliage')
+    const materials = ['#98a981', '#a5ae8a', '#b2b995'].map(color => new THREE.MeshStandardMaterial({ color, map: leafTexture ?? undefined, roughness: 1 }))
+    const instances = materials.map(material => {
+      const mesh = new THREE.InstancedMesh(geometry, material, 130)
+      mesh.castShadow = true
+      mesh.receiveShadow = true
+      this.scene.add(mesh)
+      return { mesh, count: 0 }
+    })
+    const dummy = new THREE.Object3D()
+    for (let i = 0; i < 310; i += 1) {
+      const angle = random() * Math.PI * 2
+      const radius = 11 + random() * 93
+      const x = Math.cos(angle) * radius
+      const z = Math.sin(angle) * radius
+      if (Math.abs(x - this.terrain.riverX(z)) < 7 || this.terrain.trenchDistance(x, z) < 7) continue
+      const group = instances[Math.floor(random() * instances.length)]
+      if (group.count >= 130) continue
+      const y = this.terrain.heightAt(x, z)
+      dummy.position.set(x, y + 0.45, z)
+      dummy.rotation.set(random() * 0.15, random() * Math.PI, random() * 0.12)
+      dummy.scale.set(0.55 + random() * 0.8, 0.35 + random() * 0.5, 0.55 + random() * 0.75)
+      dummy.updateMatrix()
+      group.mesh.setMatrixAt(group.count++, dummy.matrix)
+    }
+    instances.forEach(({ mesh, count }) => { mesh.count = count; mesh.instanceMatrix.needsUpdate = true })
+  }
+
+  private addRocks(): void {
+    const random = seededRandom(412005)
+    const geometry = new THREE.IcosahedronGeometry(1, 2)
+    const rockTexture = createNaturalTexture('rock')
+    const rockBump = rockTexture?.clone()
+    if (rockBump) { rockBump.colorSpace = THREE.NoColorSpace; rockBump.needsUpdate = true }
+    const materials = ['#e3e0d8', '#d8d3c7', '#c9c6bd', '#ece5d7'].map(color => new THREE.MeshStandardMaterial({ color, map: rockTexture ?? undefined, bumpMap: rockBump ?? undefined, bumpScale: 0.13, roughness: 0.98 }))
+    const meshes = materials.map(material => {
+      const mesh = new THREE.InstancedMesh(geometry, material, 120)
+      mesh.castShadow = true
+      mesh.receiveShadow = true
+      this.scene.add(mesh)
+      return { mesh, count: 0 }
+    })
+    const dummy = new THREE.Object3D()
+    for (let i = 0; i < 360; i += 1) {
+      const x = (random() * 2 - 1) * (CONFIG.world.halfSize - 8)
+      const z = (random() * 2 - 1) * (CONFIG.world.halfSize - 8)
+      const riverDist = Math.abs(x - this.terrain.riverX(z))
+      const trenchDist = this.terrain.trenchDistance(x, z)
+      const isEdge = trenchDist < 8.6
+      if (!isEdge && riverDist > 6.3 && random() > 0.24) continue
+      const group = meshes[Math.floor(random() * meshes.length)]
+      if (group.count >= 120) continue
+      dummy.position.set(x, this.terrain.heightAt(x, z) + 0.22, z)
+      dummy.rotation.set(random() * 0.35, random() * Math.PI, random() * 0.35)
+      const s = isEdge ? 0.7 + random() * 2.2 : 0.22 + random() * 0.8
+      dummy.scale.set(s * (0.8 + random() * 0.4), s * (0.55 + random() * 0.7), s * (0.7 + random() * 0.6))
+      dummy.updateMatrix()
+      group.mesh.setMatrixAt(group.count++, dummy.matrix)
+    }
+    meshes.forEach(({ mesh, count }) => { mesh.count = count; mesh.instanceMatrix.needsUpdate = true })
+  }
+
+  private addAlpineGroundCover(): void {
+    const random = seededRandom(30819)
+    const bladeGeo = new THREE.ConeGeometry(0.045, 0.36, 6, 2)
+    const mats = ['#596c45', '#6d7850', '#87906c'].map(color => new THREE.MeshStandardMaterial({ color, roughness: 0.95, side: THREE.DoubleSide }))
+    const patches = mats.map(material => {
+      const mesh = new THREE.InstancedMesh(bladeGeo, material, 900)
+      mesh.castShadow = false
+      this.scene.add(mesh)
+      return { mesh, count: 0 }
+    })
+    const dummy = new THREE.Object3D()
+    for (let i = 0; i < 1900; i += 1) {
+      const x = (random() * 2 - 1) * (CONFIG.world.halfSize - 4)
+      const z = (random() * 2 - 1) * (CONFIG.world.halfSize - 4)
+      if (Math.abs(x - this.terrain.riverX(z)) < 5 || this.terrain.trenchDistance(x, z) < 6) continue
+      const target = patches[Math.floor(random() * patches.length)]
+      if (target.count >= 900) continue
+      const height = this.terrain.heightAt(x, z)
+      dummy.position.set(x, height + 0.12, z)
+      dummy.rotation.set(0.08 + random() * 0.22, random() * Math.PI, 0.12 + random() * 0.36)
+      dummy.scale.set(0.65 + random() * 0.7, 0.42 + random() * 0.85, 0.65 + random() * 0.7)
+      dummy.updateMatrix()
+      target.mesh.setMatrixAt(target.count++, dummy.matrix)
+    }
+    patches.forEach(({ mesh, count }) => { mesh.count = count; mesh.instanceMatrix.needsUpdate = true })
+  }
+
+  private addSnow(): void {
+    const count = 1100
+    this.snowPositions = new Float32Array(count * 3)
+    const random = seededRandom(1822)
+    for (let i = 0; i < count; i += 1) {
+      this.snowPositions[i * 3] = (random() * 2 - 1) * CONFIG.world.halfSize
+      this.snowPositions[i * 3 + 1] = 5 + random() * 48
+      this.snowPositions[i * 3 + 2] = (random() * 2 - 1) * CONFIG.world.halfSize
+    }
+    const geometry = new THREE.BufferGeometry()
+    geometry.setAttribute('position', new THREE.BufferAttribute(this.snowPositions, 3))
+    const material = new THREE.PointsMaterial({ color: '#f5f7f8', size: 0.13, transparent: true, opacity: 0, depthWrite: false, sizeAttenuation: true })
+    this.snow = new THREE.Points(geometry, material)
+    this.scene.add(this.snow)
+  }
+
+  private animateSnow(dt: number): void {
+    const material = this.snow.material as THREE.PointsMaterial
+    material.opacity = this.snowAmount * 0.72
+    const positions = this.snow.geometry.attributes.position as THREE.BufferAttribute
+    for (let i = 0; i < this.snowPositions.length; i += 3) {
+      this.snowPositions[i + 1] -= dt * (2.1 + (i % 7) * 0.14)
+      this.snowPositions[i] += Math.sin(this.time * 0.7 + i) * dt * 0.25
+      if (this.snowPositions[i + 1] < this.terrain.heightAt(this.snowPositions[i], this.snowPositions[i + 2])) {
+        this.snowPositions[i + 1] = 28 + (i % 29)
       }
     }
-  }
-
-  private addFoam(): void {
-    const mat = new THREE.MeshBasicMaterial({ color: '#d3eee4', transparent: true, opacity: 0.72, depthWrite: false })
-    const rng = random(1148)
-    for (let i = 0; i < 58; i += 1) {
-      const mesh = new THREE.Mesh(new THREE.CapsuleGeometry(0.042, 0.72 + rng() * 1.1, 2, 5), mat)
-      this.scene.add(mesh)
-      this.foam.push({ mesh, z: CONFIG.world.startZ + rng() * (CONFIG.world.endZ - CONFIG.world.startZ), offset: (rng() - 0.5) * this.riverWidth * 0.72, pace: 0.68 + rng() * 0.55, phase: rng() * Math.PI * 10 })
-    }
-  }
-}
-
-function random(seed: number): () => number {
-  let a = seed >>> 0
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0
-    let t = a
-    t = Math.imul(t ^ (t >>> 15), t | 1)
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+    positions.needsUpdate = true
   }
 }

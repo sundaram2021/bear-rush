@@ -1,128 +1,133 @@
 import * as THREE from 'three'
 import { CONFIG } from './config'
+import { createBear, type AnimalRig } from './models'
 import type { World } from './world'
 
-/** Bank-side bear controller using the existing prototype geometry until approved models are available. */
+/** Camera-relative grizzly controller with momentum and reduced control on steep ground. */
 export class Player {
-  readonly root = new THREE.Group()
-  private readonly body = new THREE.Group()
-  private readonly head = new THREE.Group()
-  private readonly legs: THREE.Group[] = []
-  private readonly frontPaws: THREE.Group[] = []
-  private runPhase = 0
-  private hitPulse = 0
-  private catchPulse = 0
-  private targetZ = 0
-  private targetOffset = 1.1
-  private bankSide = 1
+  readonly rig: AnimalRig
+  readonly root: THREE.Group
+  readonly position = new THREE.Vector3()
+  readonly velocity = new THREE.Vector3()
+  private pounceTimer = 0
+  private pounceCooldown = 0
+  private hitTimer = 0
+  private gait = 0
+  private readonly lastSafe = new THREE.Vector3(-5, 0, 5)
+  private speedValue = 0
 
   constructor(private readonly world: World) {
-    this.root.add(this.body)
-    this.body.add(this.head)
-    this.buildBear()
+    this.rig = createBear()
+    this.root = this.rig.root
     this.reset()
   }
 
-  get position(): THREE.Vector3 { return this.root.position }
-  get x(): number { return this.root.position.x }
-  get z(): number { return this.root.position.z }
-  get bankOffset(): number { return this.targetOffset }
+  get speed(): number { return this.speedValue }
+  get pouncing(): boolean { return this.pounceTimer > 0 }
+  get safePosition(): THREE.Vector3 { return this.lastSafe.clone() }
 
-  step(dt: number, acrossBank: number, alongBank: number): void {
-    this.targetOffset = THREE.MathUtils.clamp(this.targetOffset + acrossBank * CONFIG.player.moveSpeed * dt, CONFIG.player.bankNear, CONFIG.player.bankFar)
-    this.targetZ = THREE.MathUtils.clamp(this.targetZ - alongBank * CONFIG.player.moveSpeed * dt, -13, 12)
-    const target = this.world.bankPoint(this.targetZ, this.bankSide, this.targetOffset)
-    this.root.position.lerp(target, 1 - Math.exp(-11 * dt))
-    const tangent = this.world.riverTangent(this.targetZ)
-    const inward = new THREE.Vector3(-tangent.z * this.bankSide, 0, tangent.x * this.bankSide).normalize()
-    const wantedYaw = Math.atan2(-inward.x, -inward.z)
-    this.root.rotation.y = THREE.MathUtils.damp(this.root.rotation.y, wantedYaw, 8, dt)
-    this.body.rotation.z = THREE.MathUtils.damp(this.body.rotation.z, -acrossBank * 0.07, 8, dt)
-    this.hitPulse = Math.max(0, this.hitPulse - dt)
-    this.catchPulse = Math.max(0, this.catchPulse - dt)
-  }
+  step(dt: number, x: number, y: number, speedLimit: number, sprint: boolean, cameraYaw: number, pounce: boolean): boolean {
+    this.pounceCooldown = Math.max(0, this.pounceCooldown - dt)
+    this.pounceTimer = Math.max(0, this.pounceTimer - dt)
+    this.hitTimer = Math.max(0, this.hitTimer - dt)
+    const forward = new THREE.Vector3(-Math.sin(cameraYaw), 0, -Math.cos(cameraYaw))
+    const right = new THREE.Vector3(Math.cos(cameraYaw), 0, -Math.sin(cameraYaw))
+    const intent = right.multiplyScalar(x).add(forward.multiplyScalar(y))
+    if (intent.lengthSq() > 1) intent.normalize()
+    const oldGround = this.world.terrain.sample(this.position.x, this.position.z)
+    const slopeControl = THREE.MathUtils.clamp(1 - oldGround.slope * CONFIG.player.slopeControlLoss, 0.34, 1)
+    const tunedSpeed = speedLimit * (CONFIG.player.moveSpeed / 5.8)
+    const limit = Math.min(CONFIG.run.maxSpeed * 1.22, tunedSpeed * (sprint ? CONFIG.run.sprintMultiplier : 1))
+    const goal = intent.multiplyScalar(limit * slopeControl)
+    const smoothing = 1 - Math.exp(-CONFIG.player.acceleration * dt * (intent.lengthSq() > 0 ? 1 : 0.58))
+    this.velocity.x = THREE.MathUtils.lerp(this.velocity.x, goal.x, smoothing)
+    this.velocity.z = THREE.MathUtils.lerp(this.velocity.z, goal.z, smoothing)
 
-  catch(): void { this.catchPulse = 0.62 }
-  hit(): void { this.hitPulse = 0.55 }
+    const downhill = new THREE.Vector3(oldGround.normal.x, 0, oldGround.normal.z)
+    const slideGate = THREE.MathUtils.clamp((this.speedValue - speedLimit * 0.48) / 6.2, 0, 1)
+      * THREE.MathUtils.clamp((oldGround.slope - 0.42) / 0.5, 0, 1)
+    if (slideGate > 0 && downhill.lengthSq() > 0.0001) {
+      this.velocity.addScaledVector(downhill.normalize(), slideGate * 9 * dt)
+    }
+    const maxVelocity = limit + slideGate * 4
+    const velocityLength = Math.hypot(this.velocity.x, this.velocity.z)
+    if (velocityLength > maxVelocity && velocityLength > 0) {
+      const scale = maxVelocity / velocityLength
+      this.velocity.x *= scale
+      this.velocity.z *= scale
+    }
 
-  reset(): void {
-    this.targetZ = 0
-    this.targetOffset = 1.1
-    this.root.position.copy(this.world.bankPoint(this.targetZ, this.bankSide, this.targetOffset))
-    this.root.rotation.y = Math.PI / 2
-    this.body.rotation.set(0, 0, 0)
-    this.head.rotation.set(0, 0, 0)
-    this.hitPulse = 0
-    this.catchPulse = 0
-    this.runPhase = 0
+    let pounceStarted = false
+    if (pounce && this.pounceCooldown <= 0) {
+      const facing = this.velocity.lengthSq() > 0.15 ? this.velocity.clone().setY(0).normalize() : forward
+      this.velocity.addScaledVector(facing, CONFIG.player.pounceBoost)
+      this.pounceTimer = 0.44
+      this.pounceCooldown = CONFIG.player.pounceCooldown
+      pounceStarted = true
+    }
+    this.position.x += this.velocity.x * dt
+    this.position.z += this.velocity.z * dt
+    const edge = this.world.terrain.halfSize - 4
+    this.position.x = THREE.MathUtils.clamp(this.position.x, -edge, edge)
+    this.position.z = THREE.MathUtils.clamp(this.position.z, -edge, edge)
+    const ground = this.world.terrain.sample(this.position.x, this.position.z)
+    this.position.y = ground.height
+    this.root.position.copy(this.position)
+    this.speedValue = Math.hypot(this.velocity.x, this.velocity.z)
+    if (this.speedValue > 0.16) {
+      const wantedYaw = Math.atan2(-this.velocity.x, -this.velocity.z)
+      this.root.rotation.y = THREE.MathUtils.damp(this.root.rotation.y, wantedYaw, 8 * slopeControl, dt)
+    }
+    const sideLean = THREE.MathUtils.clamp(x * this.speedValue * 0.012, -0.23, 0.23)
+    this.rig.body.rotation.z = THREE.MathUtils.damp(this.rig.body.rotation.z, -sideLean, 5, dt)
+    if (this.world.terrain.isSafeSurface(this.position.x, this.position.z)) this.lastSafe.copy(this.position)
+    return pounceStarted
   }
 
   animate(dt: number, time: number): void {
-    this.runPhase += dt * 3.1
-    const breath = Math.sin(time * 1.45) * 0.022
-    this.body.position.y = breath + Math.sin(this.runPhase) * 0.015
-    this.legs.forEach((leg, i) => {
-      const offset = i < 2 ? 0 : Math.PI
-      leg.rotation.x = Math.sin(this.runPhase + offset) * 0.08
+    const moving = Math.min(1, this.speedValue / 8)
+    this.gait += dt * (2.2 + this.speedValue * 1.4)
+    this.rig.body.position.y = Math.sin(time * 1.35) * 0.025 + Math.abs(Math.sin(this.gait * 2)) * moving * 0.045
+    this.rig.body.rotation.x = this.pounceTimer > 0 ? -Math.sin((1 - this.pounceTimer / 0.44) * Math.PI) * 0.16 : 0
+    this.rig.head.rotation.x = Math.sin(time * 1.2) * 0.025 - (this.pounceTimer > 0 ? 0.14 : 0)
+    this.rig.legs.forEach((leg, i) => {
+      const phase = this.gait + (i % 2 === 0 ? 0 : Math.PI)
+      leg.rotation.x = Math.sin(phase) * moving * (i < 2 ? 0.62 : 0.5)
+      if (this.pounceTimer > 0 && i < 2) leg.rotation.x -= 0.45
     })
-    const catchT = this.catchPulse > 0 ? this.catchPulse / 0.62 : 0
-    const reach = Math.sin((1 - catchT) * Math.PI) * 0.95
-    this.head.rotation.x = -catchT * 0.19
-    this.head.position.set(-0.12, catchT * 0.02, -catchT * 0.08)
-    this.frontPaws.forEach((paw, i) => {
-      paw.rotation.x = -reach * (i === 0 ? 1 : 0.78)
-      paw.position.y = 0.57 + reach * 0.1
-    })
-    if (this.hitPulse > 0) {
-      this.body.rotation.x = Math.sin(time * 34) * this.hitPulse * 0.18
-      this.body.scale.setScalar(1 + this.hitPulse * 0.035)
-      this.body.visible = Math.floor(time * 16) % 2 === 0
+    if (this.hitTimer > 0) {
+      const blink = Math.floor(time * 13) % 2 === 0
+      this.root.visible = blink
+      this.rig.body.scale.setScalar(1 + this.hitTimer * 0.025)
     } else {
-      this.body.rotation.x = 0
-      this.body.scale.setScalar(1)
-      this.body.visible = true
+      this.root.visible = true
+      this.rig.body.scale.setScalar(1)
     }
   }
 
-  private buildBear(): void {
-    const fur = new THREE.MeshStandardMaterial({ color: '#895438', roughness: 0.92, flatShading: true })
-    const lightFur = new THREE.MeshStandardMaterial({ color: '#b27a4f', roughness: 0.88, flatShading: true })
-    const dark = new THREE.MeshStandardMaterial({ color: '#30231d', roughness: 0.75 })
-    const eye = new THREE.MeshStandardMaterial({ color: '#17120f', roughness: 0.3 })
-    const add = (geometry: THREE.BufferGeometry, material: THREE.Material, pos: [number, number, number], scale: [number, number, number], parent = this.body) => {
-      const mesh = new THREE.Mesh(geometry, material)
-      mesh.position.set(...pos)
-      mesh.scale.set(...scale)
-      mesh.castShadow = true
-      mesh.receiveShadow = true
-      parent.add(mesh)
-      return mesh
-    }
-    const sphere = new THREE.SphereGeometry(1, 18, 14)
-    add(sphere, fur, [0, 1.05, 0.12], [0.68, 0.59, 0.94])
-    add(sphere, lightFur, [0, 1.13, -0.52], [0.57, 0.52, 0.55])
-    add(sphere, fur, [0, 1.7, -0.63], [0.47, 0.45, 0.47], this.head)
-    add(sphere, lightFur, [0, 1.53, -0.97], [0.31, 0.22, 0.29], this.head)
-    add(sphere, dark, [0, 1.59, -1.2], [0.13, 0.105, 0.12], this.head)
-    for (const side of [-1, 1]) {
-      add(sphere, fur, [side * 0.34, 2.04, -0.69], [0.16, 0.18, 0.15], this.head)
-      add(sphere, lightFur, [side * 0.34, 2.04, -0.72], [0.09, 0.105, 0.08], this.head)
-      add(sphere, eye, [side * 0.2, 1.79, -1.02], [0.045, 0.055, 0.035], this.head)
-      add(sphere, fur, [side * 0.51, 0.44, -0.48], [0.25, 0.42, 0.28])
-      add(sphere, fur, [side * 0.51, 0.44, 0.56], [0.27, 0.43, 0.3])
-    }
-    add(sphere, fur, [0, 1.0, 1.0], [0.18, 0.18, 0.2])
-    const legGeo = new THREE.CapsuleGeometry(0.17, 0.25, 4, 8)
-    for (const [i, [x, z]] of [[-0.5, -0.48], [0.5, -0.48], [-0.5, 0.56], [0.5, 0.56]].entries()) {
-      const pivot = new THREE.Group()
-      pivot.position.set(x, 0.58, z)
-      const leg = new THREE.Mesh(legGeo, fur)
-      leg.position.y = -0.18
-      leg.castShadow = true
-      pivot.add(leg)
-      this.body.add(pivot)
-      this.legs.push(pivot)
-      if (i < 2) this.frontPaws.push(pivot)
-    }
+  hit(): void { this.hitTimer = 0.68 }
+
+  respawn(): void {
+    this.position.copy(this.lastSafe)
+    this.root.position.copy(this.position)
+    this.velocity.set(0, 0, 0)
+    this.root.visible = true
+  }
+
+  reset(): void {
+    const start = new THREE.Vector3(-5, this.world.terrain.heightAt(-5, 5), 5)
+    this.position.copy(start)
+    this.lastSafe.copy(start)
+    this.root.position.copy(start)
+    this.root.rotation.set(0, 0, 0)
+    this.velocity.set(0, 0, 0)
+    this.rig.body.rotation.set(0, 0, 0)
+    this.rig.head.rotation.set(0, 0, 0)
+    this.rig.body.position.set(0, 0, 0)
+    this.pounceTimer = 0
+    this.pounceCooldown = 0
+    this.hitTimer = 0
+    this.gait = 0
+    this.speedValue = 0
   }
 }

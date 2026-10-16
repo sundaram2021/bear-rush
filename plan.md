@@ -1,60 +1,63 @@
-# Bear Rush: Salmon Run — Revised Design and Implementation Plan
+# Bear Rush: Mountain Hunt — Design and Implementation Plan
 
 ## Product direction
 
-This is a **3D wildlife fishing game**, not an auto-running lane/car race. The bear stands and wades along a natural riverbank, watches fish travel down the stream, and actively swipes/pounces when a salmon leaps within reach. A successful catch requires a deliberate timed Catch input; fish missed while passing are harmless. The current and fish become faster as the run continues, to a fair cap.
+Redesign the existing browser game into a **third-person, free-roaming 3D wildlife hunt**. The player controls a bear moving through a believable mountain forest in every direction. The valley has changing terrain, ridges, a river with salmon, forest clearings, and weather that cycles between clear and snow. This should read as a cohesive real-world game environment, not a lane runner, flat backdrop, or collection of visibly primitive stand-ins.
 
-The play space is a continuous, layered forest river. Water bends from side to side and rises/falls with the terrain. Small wood blocks and harmful algae are carried along the same changing water path; they follow its curves, flow speed and elevation rather than appearing on a straight road-like track.
+The bear earns points by finding and hunting **salmon, honey, deer, fawns, moose, and elk**. Deer-family prey flee and can be chased; salmon are found in/near the river; honey is a forage target. The only threats are **poisonous food, slipping off a mountain into a trench, and bear traps**. Runs begin with three lives and end only when they are gone. The bear's attainable running speed increases over time, making steering on steep ground harder and increasing the risk of a slip or mistake.
 
-Each run starts with **three lives** and has no time-based ending. Every **two separate small-block collisions** remove one life; the partial block count resets after the pair. One harmful algae contact removes one life immediately. Each physical hazard registers only once. Game over occurs only at zero lives. Fish, score, distance/survival and best run are stored only in the local browser; no account, login, sign-up, online leaderboard, analytics or server is used.
+No accounts, logins, sign-ups, backend, online saves, or analytics. Settings and personal bests remain in browser `localStorage` only.
 
-The supplied bear-at-a-cascade photograph guides the bear's stance, fish leap, water energy and forest mood; it is not used as a background image.
+## Visual and interaction direction
 
-## Art direction and design system
+- **Visual goal:** grounded, naturalistic wildlife-game realism, using full 3D terrain, coherent scale, physically plausible materials, forest depth, atmospheric perspective, and weather-integrated lighting. Use detailed, rounded animal anatomy and species-specific silhouettes rather than simple geometric placeholders; avoid flat photographic backgrounds.
+- **World:** a continuous mountain-forest valley with forest floor, slopes, ridgelines, rock faces, stream and riverbank, a clearly readable trench, ground cover, and distant mountain layers. Snow accumulates naturally on higher ground and during snow periods; clear weather returns without changing the gameplay rules.
+- **Readability:** player, edible targets, the three hazards, and safe routes must remain visible and distinct at gameplay distance. Use natural palettes; reserve unmistakable warning contrast and small HUD accents for danger and score.
+- **Camera:** low, over-the-shoulder third-person camera following the bear; mouse/touch orbit/look is optional, with smoothing that preserves orientation and framing.
+- **Bear movement:** camera-relative walk/run/sprint, jump/pounce, slope-aware footing and momentum. Leg stride, body weight, head motion and impact recovery respond to speed and state.
+- **Interface:** restrained field-gear HUD over the world: three lives, score, foods collected, distance/time, speed and current weather. Title, pause/settings, and end-of-run summary remain fully playable on desktop and mobile. Reduce-motion, mute and volume controls remain available.
+- **Audio:** start after a player gesture. Provide running/footsteps that respond to speed and surface, bear movement/hunt/eating reactions, salmon/forage cues, wind/forest/running-water ambience, snow/wind changes, and separate poison/trap/fall cues. Sound supplements visible feedback and never gates play.
+- **Data/privacy:** keep settings and best-run score in `localStorage`. No authentication or network-backed gameplay data.
 
-- **Design movement:** cinematic natural-history illustration translated into a warm, readable stylized 3D game world. The current visual prototype uses faceted geometry; final production character/environment models remain pending.
-- **Core principles:** read the river, not lanes; move wildlife and hazards using the same 3D river curve; make catching active and satisfying; explain risk without ambiguity.
-- **Color philosophy:** deep evergreen and moss anchor the forest; blue-green water carries motion; warm brown frames the bear; salmon coral marks good catches; luminous algae green warns of danger; the cream HUD stays legible.
-- **Layout:** broad three-quarter view with the bear on the near bank and a winding forest stream receding into the valley. The 3D view includes near/far banks, rocks, ferns, layered trees, distant ridges, fog and a cascade. Keep bear, leap zone and approaching hazards readable; use a quiet corner HUD.
-- **Signature elements:** salmon leap arcs with a timed catch window; water/foam ribbons on the winding current; a three-heart life strip plus a separate wood `0/2` strike indicator; prominent Catch button that brightens when fish is in reach.
-- **Interaction:** the bear hunts instead of sprinting. A/D or arrows/left touch stick adjust footing along the bank; Space/E or the touch Catch button performs a paw swipe. A late/early swipe misses harmlessly.
-- **Animation:** procedural water waves and drifting foam, tree sway, salmon swim/leap/tail motion, river-aligned floating hazards, bear idle/breathing, paw swipe and hit pose. Camera motion and effects should remain restrained and honor reduced-motion preferences.
-- **Typography:** bundled ManusCC0 display/body font and tabular HUD figures; no remote font loading.
-- **Brand:** outdoorsy, alert and playful. Voice line: “Watch the water. Snatch the leap. Leave the algae.” Retain the paw-and-river favicon and use salmon coral `#ef8050` for catches/key actions.
+## Gameplay and scoring
 
-## Scenes and player flow
+| Target | Type | Behaviour | Score |
+|---|---|---|---|
+| Salmon | Food | Swims in river reaches; bear can pursue and pounce/catch near the water | 120 |
+| Honey | Food | Visible forage/hive target in forest clearings | 180 |
+| Fawn | Prey | Flees as the bear approaches | 150 |
+| Deer | Prey | Flees and can be chased | 260 |
+| Elk | Prey | Flees; tougher/larger silhouette | 420 |
+| Moose | Prey | Flees; largest/highest-value target | 650 |
 
-1. **Forest river title:** animated view of the bear at the bank; Play, Settings, browser-local best, privacy note and concise controls.
-2. **Fishing encounter:** one continuous valley scene; no race lanes, auto-forward bear or timer fail state. Fish swim downstream and leap into Catch range. The current/fish pace rises smoothly to a cap.
-3. **Hazard response:** small wood drifts with current; each contact adds a strike and the second costs one life/resetting the meter. Harmful algae is distinct from fish and removes a life immediately. Missed fish are harmless; play continues until all three lives are gone.
-4. **Pause/settings:** pause/resume, retry, return to title, water/effects volume, mute, graphics quality and reduced motion.
-5. **Results:** fish eaten, score, survival time/distance, local personal best and Retry/Main Menu.
+These are the only scoring target categories. Food collection, score feedback, and prey movement are driven by the same world terrain coordinates. Hazards never award points.
 
-## Controls and accessibility
+**Only the following three hazards exist:**
+1. Poisonous food/forage: contact causes one life loss.
+2. Mountain slip/fall: running too fast across a steep/unsafe edge can slide into the trench and cost one life, then recover at safe ground while lives remain.
+3. Bear trap: contact causes one life loss and triggers a short trap/recovery reaction.
 
-- **Desktop:** A/D or Left/Right walk along the shore; Space or E performs Catch; Escape/P pauses.
-- **Touch:** left virtual stick walks the bank; large Catch button performs the timed swipe.
-- Show catch readiness visually; display fish count, score, current pace, lives and block meter. Use color/symbol distinctions for algae vs. salmon. Sound supplements rather than gates gameplay.
-
-## Audio plan
-
-Use the existing local Web Audio mixer after player-gesture unlock. Keep the rushing stream/waterfall bed quiet. Successful catches combine a short splash and bear catch/eating vocalization; missed swipes, wood contact, algae contact and life loss have distinct synthesized cues. Preserve mute, water/effects volume settings and visual feedback.
+No other obstacle, timer, missed-food penalty, collision type or hazard can remove a life. There is no time-based game-over.
 
 ## Implementation architecture
 
-- **Client:** existing TypeScript/Three.js/Vite static app; no backend, accounts or remote saves.
-- **World:** procedural layered valley meshes and a shared meandering river sample (`riverPoint`, `riverTangent`, water elevation) consumed by river surface, banks, foam, fish and hazards. Tree/rock/fern details reuse geometry/materials; water and foliage animate.
-- **Player/fish:** bear moves within bank bounds and animates an explicit Catch pulse; salmon swim along the current and become collectible only during a visible leap window and successful Catch action.
-- **Hazards/rules:** small wood and harmful algae replace large trunk blockers. One-time collision removal is independent per hazard. `rules.ts` handles three lives, two-block pairing, immediate algae damage, scoring and capped speed.
-- **UI/persistence:** English-only browser-local settings and personal best; title/tutorial/HUD/results explain new controls and exact damage rules.
-- **Verification:** rule/unit tests plus real-browser smoke tests cover explicit catches, bank movement, river-aligned hazards, life accounting, local saving and touch controls.
+- **Client:** existing TypeScript, Three.js and Vite static app. Preserve the current build, input, save, settings, test, and smoke-test infrastructure; no backend.
+- **World/terrain:** replace the river-lane world with a seeded mountain valley generated from a continuous height/slope field. The same terrain sampler supplies player footing, prey, salmon reaches, forests, hazards, snow masks and trench/fall checks. Use procedural color/bump textures, layered terrain materials and atmospheric depth rather than background art.
+- **Weather:** smoothly blend clear and snowy states across sky, fog, light, ground snow coverage, tree materials and snowfall. Weather is visual/ambient and does not introduce extra danger types.
+- **Player:** replace the bank controller with a camera-relative free-roam bear controller. Ramp the speed ceiling over run time up to a defined fair cap. Add slope/momentum sliding, pounce/hunt actions, recovery, grounded movement and speed-responsive animation/audio.
+- **Food/prey:** implement distinct food records, species, point values, spawn constraints and flee/chase behaviour. Salmon use water locations; honey uses forest clearings; deer/fawns/elk/moose roam valid terrain and flee. The six listed food categories are the complete score set.
+- **Hazards:** poisonous forage and bear traps spawn on valid land; the trench is part of the terrain field. Centralize one-life damage, invulnerability/recovery and reset-to-safe-ground so a single contact cannot repeatedly drain lives.
+- **Rules/save:** pure rule functions cover points, speed ramp, three lives, each allowed loss reason, run-end rules and best-run storage. Keep all save reads/writes local to this browser.
+- **Audio:** expand the existing browser-safe Web Audio engine with low continuous forest/wind/river ambience and distinct, speed-scaled footstep and hunt/hazard cues. Preserve mute/volume settings and gesture-based unlock.
+- **UI/localization:** update game text, title, tutorial, HUD, settings and results to match mountain hunting; expose weather/speed/score/foods/lives and controls; keep English content and accessible labels in sync.
+- **Project structure:** `src/game/terrain.ts` samples/generates mountain geometry; `src/game/world.ts` composes terrain, forest, river, trench and weather; `src/game/player.ts` controls/animates the bear; `src/game/food.ts` owns the six score targets; `src/game/hazards.ts` owns poison/traps; `src/game/game.ts` owns lifecycle, spawning/collision orchestration; `src/game/rules.ts` owns score/speed/life rules; `src/engine/audio.ts` owns sound; `src/engine/save.ts` owns local persistence; `src/ui/`, `src/styles/`, and `src/i18n/en.json` own controls/presentation; `tests/` and `scripts/smoke.mjs` verify rules and play flow.
 
-## Current implementation status
+## Scope boundary
 
-The bank-side active-catch loop and procedural forest river are implemented. Fish require a player-timed Catch action; current/fish speed rises and caps. River surface, banks, foam, trees, salmon and hazards share curved/undulating river sampling. Hazards are small drifting wood and algae; two distinct wood hits cost one life, algae costs one life, and runs end only at zero of three lives. The quiet local water bed, separate synthesized catch/bear/hazard cues, visible Catch feedback, touch control, browser-local records, and updated title/tutorial/HUD are in place.
+Build toward the user's requested realistic 3D presentation through scene scale, terrain depth, lighting, materials, naturalistic anatomy, animation, weather and sound. Keep the world self-contained in the browser and preserve an acceptable interactive framerate on ordinary desktop/mobile hardware. This branch's wildlife and scenery remain procedurally modeled; they are not photogrammetry or production-grade downloaded/generated GLB assets. See [`docs/asset-sourcing.md`](docs/asset-sourcing.md). Do not add online features, unrelated hazards, or services.
 
-**Verification passed:** TypeScript, 36 unit tests, production build (about 1.18 MB reported transfer-size bundle including bundled fonts), and desktop/mobile Playwright smoke tests for movement, catch, wood/algae damage and three-life end state.
+## Progress
 
-## Asset-production boundary / remaining polish
+The former riverbank fishing loop has been replaced by the free-roaming mountain hunt, six score targets, exactly three damage sources, a rising speed cap, browser-local records, responsive touch/keyboard/gamepad input, changing snow, and generated browser audio. The implementation and affected checks have been validated with TypeScript, 41 unit tests, production bundling, and desktop/mobile Playwright smoke runs.
 
-The saved Blueprint selected Hybrid/catalog-first sourcing. Bear, fish, tree and river asset searches returned a **project-unbound** access error; that does not prove the catalog is empty. The gameplay/world rework did not authorize new generated models, so no model generation was attempted. Current faceted bear/fish/environment geometry remains prototype art; final catalog-sourced production models and additional art polish are still pending.
+**Visual-fidelity limitation:** procedural 3D textures and smooth animal geometry are implemented, but literal real-world animal likeness still needs a complete compatible, licensed, rigged wildlife asset set; the asset review records why no paid or unclear models were included.

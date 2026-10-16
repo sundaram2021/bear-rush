@@ -1,6 +1,6 @@
 import type { Action, Input } from '../engine/input'
 
-/** Virtual riverbank stick and one dedicated Catch button; both feed the shared input layer. */
+/** Virtual movement stick, look drag, and hunt/sprint buttons feed the shared input layer. */
 export class TouchControls {
   private stickId: number | null = null
   private lookId: number | null = null

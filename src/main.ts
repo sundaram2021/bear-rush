@@ -13,7 +13,6 @@ async function boot(): Promise<void> {
   const canvas = document.querySelector<HTMLCanvasElement>('#game')!
   const firstRun = safeGet(SAVE_KEY) === null
   const save = new SaveStore()
-  // This game ships in English only: do not detect or persist a browser-language choice.
   const i18n = new I18n('en')
   const input = new Input(canvas)
   const audio = new Audio()
@@ -28,18 +27,21 @@ async function boot(): Promise<void> {
   const startRun = (tutorial: boolean) => {
     if (!game) return
     audio.unlock()
+    input.lockPointer()
     game.start(tutorial)
     ui.show('hud')
     loop.resetAccumulator()
   }
   const pause = () => {
     if (game?.mode !== 'playing') return
+    input.unlockPointer()
     game.pause()
     ui.show('pause')
   }
   const resume = () => {
     if (game?.mode !== 'paused') return
     game.resume()
+    input.lockPointer()
     ui.show('hud')
     loop.resetAccumulator()
   }
@@ -48,7 +50,7 @@ async function boot(): Promise<void> {
     play: () => startRun(!save.data.tutorialDone),
     restart: () => startRun(false),
     resume,
-    quit: () => { game?.toTitle(); ui.show('title') },
+    quit: () => { input.unlockPointer(); game?.toTitle(); ui.show('title') },
     settings: patch => {
       const qualityChanged = patch.quality !== undefined && patch.quality !== save.data.quality
       save.update(patch)
@@ -67,19 +69,15 @@ async function boot(): Promise<void> {
     track(import('./engine/renderer')),
     track(document.fonts.ready),
   ])
-  if (firstRun) {
-    save.update({ quality: suggestQuality() })
-    ui.refreshSettings()
-  }
+  if (firstRun) { save.update({ quality: suggestQuality() }); ui.refreshSettings() }
 
   const renderer = new Renderer(canvas, save.data.quality)
   game = new Game(renderer, input, audio, {
-      popup: (text, at, kind) => ui.popup(text, at, kind),
-      hurt: () => ui.hurt(),
-      hint: hint => ui.hint(hint),
-      catchReady: ready => ui.catchReady(ready),
-      tutorialDone: () => save.update({ tutorialDone: true }),
-    end: run => window.setTimeout(() => ui.showResults(run), 800),
+    popup: (text, at, kind) => ui.popup(text, at, kind),
+    hurt: () => ui.hurt(),
+    hint: hint => ui.hint(hint),
+    tutorialDone: () => save.update({ tutorialDone: true }),
+    end: run => window.setTimeout(() => ui.showResults(run), 850),
   })
   game.reducedMotion = save.data.reducedMotion
   if (import.meta.env.DEV) {
@@ -91,7 +89,7 @@ async function boot(): Promise<void> {
   const g = game
 
   loop = new GameLoop({
-    step: dt => g.step(dt),
+    step: dt => { g.step(dt); input.endFrame() },
     render: (alpha, frameSeconds) => {
       input.update()
       if (input.consume('pause')) {
@@ -101,17 +99,14 @@ async function boot(): Promise<void> {
       ui.frame(frameSeconds)
       loop.paused = g.mode === 'paused'
       g.render(alpha, frameSeconds)
-      if (g.mode === 'playing' || g.mode === 'ended') ui.updateHud(g.run, g.speed)
-      input.endFrame()
+      if (g.mode === 'playing' || g.mode === 'ended') ui.updateHud(g.run, g.speed, g.weather)
     },
   })
   loop.start()
-
   document.addEventListener('visibilitychange', () => { if (document.hidden) pause() })
   window.addEventListener('game:pause', pause)
   new TouchControls(document.getElementById('ui')!, input, () => g.mode === 'playing')
   window.setTimeout(() => ui.show('title'), 250)
-  // Debug/test hook: smoke tests inspect the actual run and saved local record through it.
   ;(window as unknown as { __game: unknown }).__game = { game: g, ui, input, save, rules }
 }
 
@@ -119,11 +114,11 @@ function safeGet(key: string): string | null {
   try { return localStorage.getItem(key) } catch { return null }
 }
 
-boot().catch(err => {
-  console.error(err)
+boot().catch(error => {
+  console.error(error)
   const el = document.getElementById('ui')
   if (el) {
-    el.innerHTML = `<div class="fatal"><img src="/favicon.png" alt="" /><p>Failed to start: ${String((err as Error)?.message ?? err).replace(/[<>&]/g, '')}</p><button type="button" data-retry>Retry</button></div>`
+    el.innerHTML = `<div class="fatal"><img src="/favicon.png" alt="" /><p>Failed to start: ${String((error as Error)?.message ?? error).replace(/[<>&]/g, '')}</p><button type="button" data-retry>Retry</button></div>`
     el.querySelector('[data-retry]')?.addEventListener('click', () => window.location.reload())
   }
 })
