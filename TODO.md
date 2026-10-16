@@ -2,25 +2,40 @@
 
 ## Completed in the current prototype
 
-### Active salmon fishing
-The bear now hunts while standing on the riverbank rather than running down race lanes. Salmon swim downstream and leap into an in-range catch window; the player must deliberately press Catch/Space/E or tap the mobile Catch button. A missed fish is harmless. Current and fish pace rise smoothly with time and are capped.
+### Free-roaming 3D hunt
+The bear moves in every direction across a procedural mountain valley rather than along bank lanes.
+A camera-relative controller accelerates the grizzly anywhere on a shared heightfield, with a
+third-person camera that can be turned by mouse/touch and eases behind the bear as it runs.
 
-### Forest river scene
-The previous simple straight-runner world is replaced with a layered 3D forest valley, river banks, rocks, ferns, distant ridges, water/foam motion and animated trees. Salmon, small wood blocks and algae share the same sampled river path and respond to its position, height, tangent and flow.
+### Living mountain world
+The valley combines rolling forest, ridged and snow-capped mountain rims, a winding salmon river, a
+deep crevasse and instanced pine forest and rocks. Weather drifts smoothly between clear summer and
+heavy snowfall, repainting sky, fog, sunlight, snow caps, foliage and a live particle snowfall.
 
-### Three lives and hazard accounting
-Runs start with three lives and have no timer-based ending. Two distinct small-block collisions remove one life and reset the visible 0/2 counter. One harmful-algae contact removes one life immediately. Each hazard is removed after contact so it cannot hit repeatedly; fish misses carry no penalty. Game over occurs at zero lives.
+### Six foods and three dangers
+Salmon, honey, fawns, deer, elk and moose can be hunted for 120–650 points with a rising combo; roaming
+prey flee so the player must chase, sprint or pounce. Exactly three dangers — poisonous forage, steel
+bear traps and the mountainside crevasse — each remove one of three lives. The speed ceiling rises while
+hunting, which reduces steering on steep ground and makes slips and traps more likely.
 
 ### Feedback, accessibility and local data
-A visible Catch button and catch-ready cue complement the keyboard control; touch includes bank movement and a large Catch action. The HUD displays fish, score, distance/current, three lives and the block-hit meter. The ambience is a quiet continuous synthesized river wash; distinct synthesized feedback is provided for catches/bear reactions, wood, algae and life loss. Settings and best-run records remain browser-local, with no account, login/signup, online leaderboard, analytics or server.
+Footsteps, a bear roar, per-food eating cues and distinct poison/trap/fall effects accompany a quiet
+synthesised mountain-wind bed; mute and volume settings remain. The HUD shows score, caught count,
+distance, speed, weather and three hearts, plus touch Sprint/Pounce buttons and a virtual stick. No
+account, login/signup, online leaderboard, analytics or server is used.
 
 ### Verification
-TypeScript check, 36 unit tests, production build/size check and desktop/mobile Playwright smoke test passed. The smoke test exercised bank movement, explicit timed catches, distinct wood collisions, immediate algae damage, three-life game over, local best and touch Catch.
+TypeScript check, 37 unit tests, the production build/size check and the desktop/mobile Playwright smoke
+test pass. The smoke covers roaming, proximity eating, the three dangers, end state, local best,
+English-only UI and touch controls.
 
 ## Still open / art polish
 
 ### Final production 3D models
-The approved sourcing choice is Hybrid/catalog-first, but catalog retrieval is currently blocked because the project is unbound in the catalog. That error does not establish that the catalog is empty. The current bear, salmon and environment remain low-poly/procedural prototype stand-ins; final sourced models are pending. No new generated model assets were created.
+The approved sourcing choice remains hybrid/catalog-first, but catalog retrieval was blocked because the
+project is unbound in the catalog (this does not prove the catalog is empty). The bear, animals, trees,
+rocks and terrain remain low-poly/procedural stand-ins; final sourced production models are pending.
 
 ### Further visual refinement
-The redesigned world and active fishing loop are in place, but the stylized prototype may benefit from deeper production art: a more natural bear/salmon model, richer water material/foam, a closer cascade/riverbank composition and additional polish on the catch animation. The current change is an implementation-stage visual overhaul rather than final model production.
+Richer materials, more varied animal silhouettes, foam and riverbank detail, a more dramatic crevasse,
+and deeper ambient audio are the natural next polish steps for the procedural art.

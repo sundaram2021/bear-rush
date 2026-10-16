@@ -1,39 +1,39 @@
-import { CONFIG, DEFAULT_CONFIG } from './config'
+import { CONFIG } from './config'
 
 type ApplyMode = 'LIVE' | 'NEXT_RUN'
 type Control = { id: string; type: 'number'; category: string; label: string; description: string; unit: string; default: number; min: number; max: number; step: number; applyMode: ApplyMode; integrity: 'COSMETIC' | 'GAMEPLAY' }
 type Binding = { control: Control; read(): number; write(value: number): void }
 
+const DEFAULTS: Record<string, Record<string, number>> = {
+  run: { lives: 3, baseSpeed: 5.5, speedRamp: 0.11, maxSpeed: 16 },
+  player: { accel: 20, catchRange: 2.6 },
+  camera: { fov: 62, distance: 9.5 },
+}
+
 const bindings: Binding[] = []
 function number<S extends keyof typeof CONFIG>(section: S, key: keyof typeof CONFIG[S] & string,
   label: string, min: number, max: number, step: number, unit: string, applyMode: ApplyMode = 'LIVE', integrity: 'COSMETIC' | 'GAMEPLAY' = 'GAMEPLAY'): void {
-  const values = CONFIG[section] as Record<string, number>
-  const defaults = DEFAULT_CONFIG[section] as Record<string, number>
-  bindings.push({ control: Object.freeze({ id: `${section}.${key}`, type: 'number', category: section === 'camera' ? 'Camera' : section === 'player' ? 'Bank-side fishing' : 'River encounter',
-    label, description: applyMode === 'NEXT_RUN' ? 'Applies when a new run starts.' : 'Updates this preview immediately.', unit, default: defaults[key], min, max, step, applyMode, integrity }),
+  const values = CONFIG[section] as unknown as Record<string, number>
+  const def = DEFAULTS[section][key]
+  bindings.push({ control: Object.freeze({ id: `${section}.${key}`, type: 'number', category: section === 'camera' ? 'Camera' : section === 'player' ? 'Bear handling' : 'Mountain hunt',
+    label, description: applyMode === 'NEXT_RUN' ? 'Applies when a new hunt starts.' : 'Updates this preview immediately.', unit, default: def, min, max, step, applyMode, integrity }),
     read: () => values[key], write: value => { values[key] = value } })
 }
 
-number('run', 'lives', 'Starting lives', 1, 5, 1, 'lives', 'NEXT_RUN')
-number('run', 'startSpeed', 'Starting current speed', 4, 12, 0.5, 'm/s', 'NEXT_RUN')
-number('run', 'speedRamp', 'Current speed increase', 0.01, 0.08, 0.005, 'm/s/s', 'NEXT_RUN')
-number('run', 'maxSpeed', 'Current speed cap', 8, 20, 0.5, 'm/s', 'NEXT_RUN')
-number('run', 'fishInterval', 'Initial fish arrival interval', 1, 4, 0.1, 's', 'NEXT_RUN')
-number('run', 'hazardInterval', 'Initial hazard arrival interval', 2, 7, 0.1, 's', 'NEXT_RUN')
-number('player', 'moveSpeed', 'Bank walking response', 2, 8, 0.25, 'm/s', 'LIVE')
-number('player', 'catchRangeX', 'Catch reach across the water', 2.5, 5.5, 0.1, 'm', 'LIVE')
-number('player', 'catchRangeZ', 'Catch timing window', 1.5, 4, 0.1, 'm', 'LIVE')
-number('camera', 'fov', 'Field of view', 46, 76, 1, '°', 'LIVE', 'COSMETIC')
-number('camera', 'follow', 'Camera ease', 2, 10, 0.25, '', 'LIVE', 'COSMETIC')
-number('camera', 'height', 'Camera height', 5, 11, 0.25, 'm', 'LIVE', 'COSMETIC')
+number('run', 'lives', 'Starting lives', 1, 6, 1, 'lives', 'NEXT_RUN')
+number('run', 'baseSpeed', 'Base running speed', 3, 10, 0.5, 'm/s', 'NEXT_RUN')
+number('run', 'speedRamp', 'Speed gained while hunting', 0.02, 0.3, 0.01, 'm/s/s', 'NEXT_RUN')
+number('run', 'maxSpeed', 'Speed cap', 8, 22, 0.5, 'm/s', 'NEXT_RUN')
+number('player', 'accel', 'Turning and acceleration', 8, 40, 1, '', 'LIVE')
+number('player', 'catchRange', 'Catch reach', 1.5, 5, 0.1, 'm', 'LIVE')
+number('camera', 'fov', 'Field of view', 46, 80, 1, '°', 'LIVE', 'COSMETIC')
+number('camera', 'distance', 'Camera distance', 5, 16, 0.5, 'm', 'LIVE', 'COSMETIC')
 
 const byId = new Map(bindings.map(b => [b.control.id, b]))
 let requested = Object.fromEntries(bindings.map(b => [b.control.id, b.control.default]))
 let unranked = false
 const isGameplayChanged = () => bindings.some(b => b.control.integrity === 'GAMEPLAY' && b.read() !== b.control.default)
-const valid = (v: Record<string, number>) => v['run.maxSpeed'] >= v['run.startSpeed']
-  && v['run.fishInterval'] >= CONFIG.run.fishIntervalFloor
-  && v['run.hazardInterval'] >= CONFIG.run.hazardIntervalFloor
+const valid = (v: Record<string, number>) => v['run.maxSpeed'] >= v['run.baseSpeed']
 
 export const tuning = {
   get unranked(): boolean { return unranked },
@@ -52,7 +52,7 @@ export const tuning = {
     const candidate = { ...requested, ...patch } as Record<string, number>
     const active = this.read().active
     for (const [id, value] of entries) if (byId.get(id)!.control.applyMode === 'LIVE') active[id] = value
-    if (!valid(candidate) || !valid(active)) throw new Error('Current speed cap must not be lower than starting speed')
+    if (!valid(candidate) || !valid(active)) throw new Error('Frame rate cap must not be lower than the base speed')
     requested = candidate
     for (const [id, value] of entries) {
       const binding = byId.get(id)!

@@ -4,21 +4,19 @@
  *
  * Call `endFrame()` once per rendered frame after gameplay consumed edge-triggered presses.
  */
-export type Action = 'catch' | 'jump' | 'sprint' | 'dash' | 'pause' | 'confirm' | 'back' | 'interact'
+export type Action = 'eat' | 'sprint' | 'pause' | 'confirm' | 'back' | 'interact'
 export type InputMethod = 'keyboard' | 'gamepad' | 'touch'
 
 const KEY_BINDINGS: Record<Action, string[]> = {
-  catch: ['Space', 'KeyE'],
-  jump: [],
+  eat: ['Space', 'KeyE'],
   sprint: ['ShiftLeft', 'ShiftRight'],
-  dash: ['KeyF', 'KeyJ'],
   pause: ['Escape', 'KeyP'],
   confirm: ['Enter', 'NumpadEnter'],
   back: [],
   interact: [],
 }
 const MOVE_KEYS = { up: ['KeyW', 'ArrowUp'], down: ['KeyS', 'ArrowDown'], left: ['KeyA', 'ArrowLeft'], right: ['KeyD', 'ArrowRight'] }
-const PAD_BINDINGS: Record<Action, number[]> = { catch: [0, 3], jump: [], sprint: [4, 10], dash: [2, 5, 7], pause: [9], confirm: [0], back: [1], interact: [] }
+const PAD_BINDINGS: Record<Action, number[]> = { eat: [0, 2], sprint: [4, 10], pause: [9], confirm: [0], back: [1], interact: [] }
 
 export class Input {
   /** Movement intent in [-1, 1]: x moves toward/away from the water; y walks along the bank. */
@@ -53,9 +51,6 @@ export class Input {
     })
     on(window, 'keyup', e => this.keys.delete(e.code))
     on(window, 'blur', () => this.keys.clear())
-    on(window, 'mousedown', e => {
-      if (e.button === 0 && (e.target === canvas || document.pointerLockElement === canvas)) this.pressed_.add('catch')
-    })
     on(window, 'mousemove', e => {
       if (document.pointerLockElement !== canvas) return
       this.look.x += e.movementX * 0.0022

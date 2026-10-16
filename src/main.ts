@@ -77,7 +77,6 @@ async function boot(): Promise<void> {
       popup: (text, at, kind) => ui.popup(text, at, kind),
       hurt: () => ui.hurt(),
       hint: hint => ui.hint(hint),
-      catchReady: ready => ui.catchReady(ready),
       tutorialDone: () => save.update({ tutorialDone: true }),
     end: run => window.setTimeout(() => ui.showResults(run), 800),
   })
@@ -101,7 +100,7 @@ async function boot(): Promise<void> {
       ui.frame(frameSeconds)
       loop.paused = g.mode === 'paused'
       g.render(alpha, frameSeconds)
-      if (g.mode === 'playing' || g.mode === 'ended') ui.updateHud(g.run, g.speed)
+      if (g.mode === 'playing' || g.mode === 'ended') ui.updateHud(g.run, g.speed, g.snowfall)
       input.endFrame()
     },
   })
@@ -109,6 +108,10 @@ async function boot(): Promise<void> {
 
   document.addEventListener('visibilitychange', () => { if (document.hidden) pause() })
   window.addEventListener('game:pause', pause)
+  // Click the world (not the UI) to capture the mouse and look around while hunting.
+  canvas.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'mouse' && g.mode === 'playing') input.lockPointer()
+  })
   new TouchControls(document.getElementById('ui')!, input, () => g.mode === 'playing')
   window.setTimeout(() => ui.show('title'), 250)
   // Debug/test hook: smoke tests inspect the actual run and saved local record through it.

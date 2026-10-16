@@ -4,9 +4,10 @@ import { detectLocale, resolveLocale } from '../src/engine/i18n'
 
 const required = [
   'game.title', 'game.tagline', 'menu.play', 'menu.settings', 'menu.retry', 'controls.title',
-  'controls.desktop', 'controls.touch', 'controls.goal', 'hud.fish', 'hud.score', 'hud.distance',
-  'hud.speed', 'pause.title', 'settings.title', 'settings.water', 'settings.effects', 'settings.mute',
-  'settings.privacy', 'results.title', 'results.fish', 'results.score', 'results.distance', 'results.time', 'results.best',
+  'controls.desktop', 'controls.touch', 'controls.goal', 'controls.hazards', 'hud.score', 'hud.food',
+  'hud.distance', 'hud.speed', 'hud.weather', 'pause.title', 'settings.title', 'settings.wind',
+  'settings.effects', 'settings.mute', 'settings.privacy', 'results.title', 'results.food',
+  'results.score', 'results.distance', 'results.time', 'results.best',
 ]
 
 describe('English-only game copy', () => {

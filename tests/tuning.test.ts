@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { CONFIG, DEFAULT_CONFIG } from '../src/game/config'
+import { CONFIG } from '../src/game/config'
 import { Player } from '../src/game/player'
-import { createRun } from '../src/game/rules'
+import { createRun, speedCap } from '../src/game/rules'
+import { Terrain } from '../src/game/terrain'
 import { tuning } from '../src/game/tuning'
-import { World } from '../src/game/world'
 
 const defaults = Object.fromEntries(tuning.controls.map(control => [control.id, control.default]))
 afterEach(() => {
@@ -11,51 +11,49 @@ afterEach(() => {
   tuning.activate('run')
 })
 
-describe('river fishing tuning', () => {
+describe('mountain hunt tuning', () => {
   it('validates complete patches before committing and preserves source defaults', () => {
     const before = tuning.read()
-    for (const patch of [{ 'run.maxSpeed': 7, 'camera.fov': 999 }, { 'run.speedRamp': 0.011 }, { 'player.moveSpeed': '8' }, { unknown: 4 }]) {
+    for (const patch of [{ 'run.maxSpeed': 4, 'camera.fov': 999 }, { 'run.speedRamp': 0.111 }, { 'player.accel': '20' }, { unknown: 4 }]) {
       expect(() => tuning.apply(patch)).toThrow()
       expect(tuning.read()).toEqual(before)
     }
-    tuning.apply({ 'player.moveSpeed': 5.5 })
-    expect(CONFIG.player.moveSpeed).toBe(5.5)
-    expect(DEFAULT_CONFIG.player.moveSpeed).toBe(4.8)
+    tuning.apply({ 'player.accel': 22 })
+    expect(CONFIG.player.accel).toBe(22)
+    expect(tuning.controls.find(c => c.id === 'player.accel')!.default).toBe(20)
   })
 
-  it('holds next-run lives/current values until a new run starts', () => {
-    tuning.apply({ 'run.lives': 4, 'run.startSpeed': 8 })
+  it('holds next-run life and speed values until a new hunt starts', () => {
+    tuning.apply({ 'run.lives': 4, 'run.baseSpeed': 6 })
     expect(CONFIG.run.lives).toBe(3)
     expect(createRun().lives).toBe(3)
     tuning.activate('run')
     expect(CONFIG.run.lives).toBe(4)
-    expect(CONFIG.run.startSpeed).toBe(8)
+    expect(CONFIG.run.baseSpeed).toBe(6)
     expect(createRun().lives).toBe(4)
   })
 
-  it('changes actual bank-side walking while keeping the bear on the shoreline', () => {
-    const world = new World()
-    const player = new Player(world)
-    const initialOffset = player.bankOffset
-    player.step(0.2, 1, 0)
-    expect(player.bankOffset).toBeGreaterThan(initialOffset)
-    for (let i = 0; i < 30; i += 1) player.step(0.1, 1, 0)
-    expect(player.bankOffset).toBeLessThanOrEqual(CONFIG.player.bankFar)
-    expect(player.position.y).toBeGreaterThan(world.waterHeight(player.z))
+  it('drives the bear across the terrain in the requested camera-relative direction', () => {
+    const terrain = new Terrain()
+    const player = new Player(terrain)
+    const start = player.position.clone()
+    for (let i = 0; i < 20; i += 1) player.step(1 / 60, { x: 0, y: 1 }, 0, false, speedCap(0))
+    expect(player.position.z).toBeGreaterThan(start.z + 1)
+    expect(Math.abs(player.position.y - terrain.height(player.position.x, player.position.z))).toBeLessThan(1.2)
   })
 
-  it('requires the current cap to be at least the starting current', () => {
-    expect(() => tuning.apply({ 'run.startSpeed': 9, 'run.maxSpeed': 9 })).not.toThrow()
-    expect(() => tuning.apply({ 'run.startSpeed': 10, 'run.maxSpeed': 9 })).toThrow()
+  it('requires the speed cap to be at least the base speed', () => {
+    expect(() => tuning.apply({ 'run.baseSpeed': 10, 'run.maxSpeed': 10 })).not.toThrow()
+    expect(() => tuning.apply({ 'run.baseSpeed': 12, 'run.maxSpeed': 10 })).toThrow()
   })
 })
 
-describe('fishing score eligibility', () => {
+describe('hunt score eligibility', () => {
   it('ignores camera changes but marks gameplay changes when activated', () => {
     tuning.activate('run')
-    tuning.apply({ 'camera.fov': 61 })
+    tuning.apply({ 'camera.fov': 66 })
     expect(tuning.unranked).toBe(false)
-    tuning.apply({ 'player.moveSpeed': 5.25 })
+    tuning.apply({ 'player.accel': 24 })
     expect(tuning.unranked).toBe(true)
     tuning.apply(defaults)
     expect(tuning.unranked).toBe(true)
