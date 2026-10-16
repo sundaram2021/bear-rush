@@ -4,8 +4,8 @@ import { detectLocale, resolveLocale } from '../src/engine/i18n'
 
 const required = [
   'game.title', 'game.tagline', 'menu.play', 'menu.settings', 'menu.retry', 'controls.title',
-  'controls.desktop', 'controls.touch', 'controls.goal', 'controls.hazards', 'controls.huntButton',
-  'hud.score', 'hud.food', 'hud.distance', 'weather.clear', 'weather.snow', 'pause.title',
+  'controls.desktop', 'controls.touch', 'controls.stalk', 'controls.goal', 'controls.hazards', 'controls.huntButton',
+  'hud.score', 'hud.food', 'hud.distance', 'hud.map', 'hud.map.label', 'hud.map.wind', 'hud.map.legend', 'weather.clear', 'weather.snow', 'pause.title',
   'settings.title', 'settings.ambience', 'settings.effects', 'settings.mute', 'settings.privacy',
   'results.title', 'results.food', 'results.score', 'results.distance', 'results.time', 'results.best',
   'food.salmon', 'food.honey', 'food.fawn', 'food.deer', 'food.elk', 'food.moose',
@@ -24,6 +24,8 @@ describe('English-only mountain-hunt copy', () => {
     expect(en['controls.hazards']).toContain('poisonous food')
     expect(en['controls.hazards']).toContain('trench')
     expect(en['controls.hazards']).toContain('bear traps')
+    expect(en['controls.desktop']).toContain('Ctrl stalks')
+    expect(en['controls.touch']).toContain('gently')
   })
 
   it('does not leave unresolved copy placeholders', () => {

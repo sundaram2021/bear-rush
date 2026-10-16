@@ -15,7 +15,7 @@ import type { Terrain } from './terrain'
 
 export type Mode = 'attract' | 'playing' | 'paused' | 'ended'
 export type Hint = 'move' | 'hunt' | 'dangers' | null
-export type MapSnapshot = { x: number; z: number; heading: number; radius: number; terrain: Terrain; tracks: WildlifeTrack[] }
+export type MapSnapshot = { x: number; z: number; heading: number; radius: number; wind: { x: number; z: number }; terrain: Terrain; tracks: WildlifeTrack[] }
 export type GameHooks = {
   popup(text: string, screen: { x: number; y: number }, kind: 'score' | 'hurt'): void
   hurt(): void
@@ -63,8 +63,9 @@ export class Game {
   get speedLimit(): number { return speedCap(this.run.elapsed) }
   get weather(): 'Clear' | 'Changing' | 'Snowing' { return this.world.weatherLabel }
   get mapSnapshot(): MapSnapshot {
+    const wind = this.world.windVector()
     return { x: this.player.position.x, z: this.player.position.z, heading: this.player.root.rotation.y,
-      radius: CONFIG.hunt.trackingRadius, terrain: this.world.terrain, tracks: this.food.tracks(this.player.position) }
+      radius: CONFIG.hunt.trackingRadius, wind: { x: wind.x, z: wind.z }, terrain: this.world.terrain, tracks: this.food.tracks(this.player.position) }
   }
 
   start(tutorial: boolean): void {
@@ -130,7 +131,7 @@ export class Game {
     const pounce = this.input.consume('catch')
     const pounceStarted = this.player.step(
       dt, this.input.move.x, this.input.move.y, this.speedLimit,
-      this.input.held('sprint'), this.cameraYaw, pounce,
+      this.input.held('sprint'), this.cameraYaw, pounce, this.input.held('stalk'),
     )
     this.pantTimer -= dt
     if (this.player.sprinting && this.player.stamina < 0.43 && this.pantTimer <= 0) {
@@ -143,12 +144,12 @@ export class Game {
     }
     this.player.animate(dt, this.time)
     this.playFootfalls()
-    this.food.step(dt, this.player.position, this.world.terrain, this.world.windVector(), this.player.speed)
+    this.food.step(dt, this.player.position, this.world.terrain, this.world.windVector(), this.player.speed, this.player.stalking, this.player.forward)
     if (this.food.consumeAlert()) this.audio.play('wildlife-alert')
     this.hazards.step(dt, this.world.terrain, this.player.position)
     this.run = tick(this.run, dt, this.player.speed)
 
-    const contact = this.food.collectNearby(this.player.position, this.player.pouncing)
+    const contact = this.food.collectNearby(this.player.position, this.player.pouncing, this.player.forward, this.player.speed)
     if (contact) this.collectFood(contact.kind, contact.position)
     const missed = this.food.consumeMissedHunt()
     if (missed) this.audio.play('hunt-miss')

@@ -88,7 +88,7 @@ export class FoodField {
     return false
   }
 
-  step(dt: number, bear: THREE.Vector3, terrain: Terrain, wind = new THREE.Vector3(0, 0, 1), bearSpeed = 0): void {
+  step(dt: number, bear: THREE.Vector3, terrain: Terrain, wind = new THREE.Vector3(0, 0, 1), bearSpeed = 0, stalking = false, bearForward?: THREE.Vector3): void {
     const windDirection = wind.clone().setY(0).normalize()
     const remove: FoodActor[] = []
     for (const actor of this.actors) {
@@ -130,8 +130,9 @@ export class FoodField {
       const downwind = new THREE.Vector2(actor.root.position.x - bear.x, actor.root.position.z - bear.z)
         .normalize().dot(new THREE.Vector2(windDirection.x, windDirection.z))
       const scentBoost = downwind > 0.45 ? 20 : downwind < -0.45 ? -7 : 0
-      const noiseBoost = THREE.MathUtils.clamp(bearSpeed * 1.25, 0, 24)
-      const detection = CONFIG.hunt.awareness[kind] + scentBoost + noiseBoost
+      const noiseBoost = THREE.MathUtils.clamp(bearSpeed * (stalking ? 0.42 : 1.25), 0, 24)
+      const visualAwareness = CONFIG.hunt.awareness[kind] * (stalking ? CONFIG.hunt.stalkAwarenessMultiplier : 1)
+      const detection = visualAwareness + scentBoost + noiseBoost
 
       if (actor.state === 'roaming' && distance < detection) {
         actor.state = 'alert'
@@ -143,11 +144,14 @@ export class FoodField {
         if (actor.alertTimer <= 0) actor.state = 'fleeing'
       }
 
-      const chased = distance < CONFIG.hunt.chaseRadius
+      const pursuitHeading = bearForward && new THREE.Vector2(bearForward.x, bearForward.z).normalize()
+      const toPrey = new THREE.Vector2(actor.root.position.x - bear.x, actor.root.position.z - bear.z).normalize()
+      const bearingTowardPrey = !!pursuitHeading && pursuitHeading.dot(toPrey) > 0.2
+      const chased = distance < CONFIG.hunt.chaseRadius && bearSpeed > 0.75 && bearingTowardPrey
       if (actor.state === 'fleeing') {
         if (chased) actor.stamina = Math.max(0, actor.stamina - dt / CONFIG.hunt.chaseDuration[kind])
         else actor.stamina = Math.min(1, actor.stamina + dt * 0.035)
-        if (distance > CONFIG.hunt.chaseRadius * 1.45 && actor.stamina > 0.72) {
+        if (distance > CONFIG.hunt.escapeRadius && actor.stamina > 0.72) {
           actor.state = 'roaming'
           actor.stamina = Math.min(1, actor.stamina + dt * 0.08)
         }
@@ -202,7 +206,7 @@ export class FoodField {
     }
   }
 
-  collectNearby(bear: THREE.Vector3, pouncing: boolean): FoodContact | null {
+  collectNearby(bear: THREE.Vector3, pouncing: boolean, bearForward = new THREE.Vector3(0, 0, -1), bearSpeed = 0): FoodContact | null {
     let nearest: FoodActor | undefined
     let best = Number.POSITIVE_INFINITY
     for (const actor of this.actors) {
@@ -212,13 +216,16 @@ export class FoodField {
       const distanceSq = dx * dx + dz * dz + dy * dy * 0.12
       const range = actor.kind === 'honey' ? 2.15 : actor.kind === 'salmon' ? 2.75 : 2.35
       if (distanceSq >= range * range || distanceSq >= best) continue
+      const approach = new THREE.Vector3(dx, 0, dz)
+      const facing = approach.lengthSq() > 0.0001 && approach.normalize().dot(bearForward) >= CONFIG.player.pounceFacingDot
+      const committedPounce = pouncing && bearSpeed >= CONFIG.player.pounceMinSpeed && facing
       if (isPrey(actor.kind)) {
         if (!pouncing) continue
-        if (actor.state !== 'exhausted' || actor.exhaustedTimer <= 0) {
+        if (actor.state !== 'exhausted' || actor.exhaustedTimer <= 0 || !committedPounce) {
           if (actor.missedTimer <= 0) {
-            actor.missedTimer = 1.7
+            actor.missedTimer = 2.8
             actor.state = 'fleeing'
-            actor.stamina = Math.min(1, actor.stamina + 0.24)
+            actor.stamina = Math.min(1, actor.stamina + 0.34)
             actor.exhaustedTimer = 0
             actor.velocity.add(new THREE.Vector3(dx, 0, dz).normalize().multiplyScalar(2.7))
             this.missedHunt = actor.kind
@@ -226,7 +233,7 @@ export class FoodField {
           continue
         }
       }
-      if (actor.kind === 'salmon' && !pouncing) continue
+      if (actor.kind === 'salmon' && !committedPounce) continue
       nearest = actor
       best = distanceSq
     }
@@ -289,8 +296,9 @@ export class FoodField {
     legs.forEach((leg, index) => {
       leg.rotation.x = Math.sin(phase + phases[index]) * stride * (actor.state === 'exhausted' ? 0.18 : 0.54)
     })
-    actor.rig!.head.rotation.x = actor.state === 'alert' ? -0.1 : actor.state === 'exhausted' ? 0.07 : Math.sin(actor.phase * 2.6) * 0.025
-    actor.rig!.body.position.y = Math.abs(Math.sin(phase * 2)) * stride * 0.032
+    actor.rig!.head.rotation.x = actor.state === 'alert' ? -0.1 : actor.state === 'exhausted' ? 0.19 : Math.sin(actor.phase * 2.6) * 0.025
+    actor.rig!.body.position.y = Math.abs(Math.sin(phase * 2)) * stride * 0.032 - (actor.state === 'exhausted' ? 0.075 : 0)
+    actor.rig!.body.rotation.z = actor.state === 'exhausted' ? Math.sin(actor.phase * 4.1) * 0.035 : 0
     actor.rig!.body.rotation.x = actor.state === 'fleeing' ? -0.025 : 0
     void dt
   }

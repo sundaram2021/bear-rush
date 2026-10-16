@@ -14,6 +14,7 @@ pnpm smoke
 ```
 
 The environment and wildlife use local procedural Three.js geometry, shared instanced scenery, locally created material textures, atmospheric lighting/fog, moving water and clear-to-snowing weather. It is a naturalistic procedural 3D prototype, **not a photogrammetry/AAA asset production**: rigged, production-quality wildlife models and a reviewed art set have not been added. Browser Web Audio creates forest ambience, bear sounds, gait-timed footsteps, pounce, forage and hazard effects after the first user gesture.
+The terrain now also bundles local **CC0 2K PBR diffuse and normal maps** for rocky ground and snow from Poly Haven; runtime rendering does not fetch them from a third party. This improves the landscape surface only—the bear and wildlife remain procedural and do not yet meet a photoreal wildlife-art bar. See [`docs/art-sourcing.md`](docs/art-sourcing.md) for evaluated sources and the remaining model gap.
 
 ## Controls
 
@@ -23,7 +24,7 @@ The environment and wildlife use local procedural Three.js geometry, shared inst
 | Touch | Left virtual stick moves; drag to look; Hunt pounces; Run sprints. |
 | Gamepad | Left stick moves; the shared action map supports sprint, hunt and pause. |
 
-The bear accelerates from a deliberate walk into a trot and gallop. The speed ceiling rises as the run continues; sprint briefly exceeds the current ceiling but drains a finite reserve, which recovers while released. Slope momentum reduces control. Footstep sounds are triggered from gait contacts and switch to a snowier step on snow-covered ground.
+The bear accelerates from a deliberate walk into a trot and gallop. The speed ceiling rises as the run continues. Hold **Ctrl** to stalk at a slower, quieter pace; on touch, use a light movement-stick input. Wind and movement noise affect how soon prey notices. Sprint is a short burst, its reserve takes meaningful time to recover, and slope momentum reduces control. Footstep sounds follow gait contacts and change on snow.
 
 ## Tracking and hunting
 
@@ -38,7 +39,7 @@ The north-oriented map shows the bear, heading, river/trench landmarks and recen
 | Elk | 420 |
 | Moose | 650 |
 
-Wild animals are sparse, wary and species-specific. They notice the bear based on distance, wind-carried scent and movement noise, then flee with evasive turns. Keep up the chase to drain prey stamina; an animal can only be caught with a close, correctly timed pounce during its short exhaustion window. An early pounce misses, alerts the prey and gives it an escape opportunity. Sprinting continuously is not a reliable shortcut. Salmon follow the river; honey can be foraged on land. Successive food adds a short combo bonus.
+Wild animals are sparse, wary and species-specific. They notice the bear based on distance, wind-carried scent and movement noise, then flee with evasive turns. The map's wind arrow shows scent flow; approach prey from the opposite, upwind direction. Prey only tires while the bear actively keeps close and faces into the chase; losing the chase lets it recover and escape. A healthy animal cannot be contact-caught: a hunt requires sustained pursuit, a brief exhaustion cue, close range, a front-on approach and enough momentum for a single committed pounce. A miss alerts the prey, restores some stamina and enforces recovery before another attempt. Fawn, deer, elk and moose differ in awareness, speed and endurance. Salmon follow the river; honey can be foraged on land. Successive food adds a short combo bonus.
 
 ## Dangers
 

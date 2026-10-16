@@ -65,6 +65,9 @@ export class Ui {
     this.set('stamina', `${Math.round(stamina * 100)}%`)
     const staminaFill = this.root.querySelector<HTMLElement>('.stamina-bar i')
     if (staminaFill) staminaFill.style.transform = `scaleX(${Math.max(0, Math.min(1, stamina))})`
+    const mapCanvas = this.root.querySelector<HTMLCanvasElement>('.minimap')
+    const mapLabel = `${this.i18n.t('hud.map.label')} ${this.i18n.t('hud.map.wind')}`
+    if (mapCanvas?.getAttribute('aria-label') !== mapLabel) mapCanvas?.setAttribute('aria-label', mapLabel)
     this.minimap.draw(map)
     for (const kind of FOOD_KINDS) this.set(kind, String(run.tally[kind]))
     for (const [index, life] of [...this.root.querySelectorAll<HTMLElement>('.life')].entries()) life.classList.toggle('is-empty', index >= run.lives)

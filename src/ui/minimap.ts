@@ -99,5 +99,15 @@ export class Minimap {
     ctx.fillStyle = '#f2d18b'; ctx.fill()
     ctx.strokeStyle = '#17251d'; ctx.lineWidth = 1.5; ctx.stroke()
     ctx.restore()
+
+    const windX = center + radius * 0.56
+    const windY = center - radius * 0.56
+    ctx.beginPath(); ctx.arc(windX, windY, 16, 0, Math.PI * 2)
+    ctx.fillStyle = 'rgba(16,31,25,.86)'; ctx.fill()
+    ctx.strokeStyle = 'rgba(245,241,226,.45)'; ctx.lineWidth = 1; ctx.stroke()
+    ctx.save(); ctx.translate(windX, windY); ctx.rotate(Math.atan2(-map.wind.z, map.wind.x))
+    ctx.beginPath(); ctx.moveTo(-8, 0); ctx.lineTo(7, 0); ctx.lineTo(2, -4); ctx.moveTo(7, 0); ctx.lineTo(2, 4)
+    ctx.strokeStyle = '#9dd8d0'; ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.stroke()
+    ctx.restore()
   }
 }

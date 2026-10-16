@@ -1,50 +1,54 @@
-# Bear Rush — Endless Mountain Hunt follow-up
+# Bear Rush — photoreal wildlife and pursuit update
 
 ## Goal
 
-Extend the open mountain-hunt redesign PR into a more deliberate, believable third-person wildlife game. Fix the user-identified weaknesses: the bounded arena, abundant/easy prey and instant collection, an unconvincing bear run cycle, and no way to track distant wildlife. Keep this in the same browser game and open PR.
+Build on the merged endless-world hunt and replace its procedural stand-in characters and scenery with genuinely high-detail, photorealistic wildlife and environment art. Make the predator loop require a quiet approach, sustained pursuit and a brief, well-timed pounce rather than an easy speed advantage. Deliver this as a new pull request from the merged main branch.
 
-## Non-negotiable product constraints
+## Product constraints
 
-- Entirely browser-local: no accounts, login, signup, backend saves, online leaderboard or telemetry. Retain localStorage-only preferences and best score.
-- Food/targets remain salmon, honey, fawn, deer, elk and moose.
-- The **only** life-loss hazards remain poisonous forage, a slip/fall into the trench, and bear traps.
-- Do not add external or paid models/assets in this follow-up. Continue with the repository's local procedural source approach. Describe the result accurately as naturalistic procedural 3D—not photogrammetry or a completed AAA production asset set.
-- Preserve the existing public PR branch and its tests/controls/settings.
+- Preserve the local-only game: no sign-up, login, server, analytics, networked leaderboard or remote save. Runtime game assets must ship with the game rather than depend on third-party URLs.
+- Keep the six food targets—salmon, honey, fawn, deer, elk and moose—and exactly three life-loss causes: poisonous food, slipping into the trench, and bear traps.
+- Preserve the endless seeded terrain, nearby minimap/tracks, desktop/touch/gamepad controls, settings and browser-local records.
+- Follow the user's latest direction for this pass: **do not generate AI models and do not purchase assets.** Use only freely redistributable CC0/CC BY assets whose visual quality, runtime format and locomotion suitability are verified; report any role for which no candidate meets that bar.
+- Do not use procedural geometry as the visible bear, prey, salmon or major environment art. Procedural code may remain for terrain topology, placement, seasonal blending and small incidental effects.
 
-## Requested redesign follow-up
+## Visual direction
 
-### Unbounded streamed world
+**Design movement:** field-documentary wildlife simulation with natural camera optics and grounded alpine lighting. The interface should feel like restrained field equipment, not a fantasy combat HUD.
 
-- Replace the single 250 m terrain slab and player-coordinate clamp with deterministic chunks generated from global world coordinates.
-- Stream a bounded view radius around the player (terrain, river segment, forest/rocks/ground cover and local environmental effects); dispose distant chunks and their GPU resources.
-- Make terrain, trench/safe-ground sampling, river, prey, hazard placement and map coordinates valid at any distance; no world edge or fixed reset loop.
-- Use deterministic coordinate-derived seeds so neighboring chunk seams and repeated visits are stable. Do not recycle/teleport the player or make chunks visibly pop during normal movement.
+- **Core principles:** believable anatomy and scale; physically based surface response; cohesive daylight/weather; readable wildlife cues without gamey omniscience.
+- **Color philosophy:** snow-cool sky and shadow, forest greens and bark neutrals, with subdued warm sun; reserve saturated colors for poison/trap warnings and essential UI.
+- **Layout paradigm:** let the landscape and third-person camera dominate; keep map, compass, stamina and species clues as compact peripheral instruments.
+- **Signature elements:** detailed coat/skin/scale response; soft atmospheric depth and grounded contact shadows; subtle field-map markers that age instead of tracking animals live.
+- **Interaction and animation:** low-noise stalking creates a deliberate approach; short sprint bursts have weight and recovery; prey expresses alertness, exertion and exhaustion through animation and audio rather than a large floating health bar. Pounces must have anticipation, airborne travel, contact and recovery phases.
+- **Typography and identity:** retain the existing condensed field-label hierarchy and warm paper/cream accents against dark forest glass. Brand essence: a patient alpine predator hunt; observant, physical, untamed. Keep the existing Bear Rush wordmark and signature amber field accent.
 
-### Wildlife tracking minimap
+## Art and runtime architecture
 
-- Add a compact, north-oriented local map with player heading/position, landforms/river/trench and wildlife indicators.
-- Make wildlife scarce and disclose sightings in a finite tracking radius. Show species and a last-known/track location rather than a perfect omniscient radar at all distances; age/fade trails as animals move or the scent signal expires. Use the minimap to guide the bear toward wildlife without making the hunt automatic.
-- Track prey position in global coordinates so streaming or crossing chunk boundaries never breaks markers.
+- Source individual GLB/glTF assets for the grizzly, fawn, deer, elk, moose and salmon, plus the environment roles needed for close camera views. Candidate sets must be checked for real redistribution rights, PBR maps, usable skeletons/animation clips, scale/origin and acceptable file size before import. Record per-asset author, source, license and attribution in the repository.
+- Load local models through the existing Three.js application with an asynchronous asset registry, explicit preload progress, compatible color-space/material handling and a visible load failure rather than an online fetch or a claimed-success procedural substitute. Keep textures with their model and paths stable under `assets/`.
+- Replace the procedural `AnimalRig` consumers with GLTF scene/animation bindings. Use `AnimationMixer` and in-place locomotion clips for idle, walk, trot/run, alert, tired/exhausted, pounce/attack and recovery where the source rig provides them. Keep world movement and collision ownership in gameplay code; imported clips must not accumulate root motion.
+- Use reviewed scanned/PBR environment assets for camera-close trunks, ground cover, rock, snow and river banks; preserve the streamed 5×5 chunk window, stable global coordinates and disposal of distant GPU resources. Share materials and instances, use justified texture sizes and keep lower graphics presets viable.
+- Preserve the existing ACES tone mapping and local scene renderer while improving physically based materials, environment lighting, shadow contact, terrain texture scale and weather transitions. Avoid a static photo backdrop: the landscape must remain navigable and coherent as chunks stream.
 
-### Difficult pursuit-and-pounce hunting loop
+## Predator and prey tuning
 
-- Prey begin wary/roaming rather than waiting for effortless contact; their detection/flight distance, alert cue and escape response vary by species.
-- When aware, prey flee and use terrain/turns to gain distance. Track their stamina while pursued and allow recovery when the bear loses the chase.
-- A pounce only succeeds inside a close, explicit vulnerable/exhausted window after a sustained chase; an early/missed pounce creates recovery time and gives prey another escape opportunity. Honey and salmon remain foraging/fishing interactions, not free contact points.
-- Tune initial wildlife density and respawn pacing so the bear must read the map/tracks and travel to find prey, with no guaranteed animal standing beside the start. Keep scoring and the exact three hazard types unchanged.
+- Let the player deliberately stalk: slow analog input and a dedicated desktop stalk action reduce noise and walking pace; sprinting raises alert/noise and drains a limited reserve with a longer recovery. Approach relative to wind instead of running straight to the marker.
+- Give fawn, deer, elk and moose distinct detection thresholds, burst speed, endurance, turning response and recovery. A healthy animal should not be caught by contact or one early pounce. Exhaustion must require a sustained chase that remains close enough to count; losing the trail should let the animal recover and leave.
+- Use a short species-sensitive vulnerable window, close-range facing/momentum test and meaningful pounce cooldown/recovery. A miss alerts the prey and prevents immediate repeated attempts; a successful hunt consumes it once. Convey state through imported body language, breath and sound cues.
+- Keep fish/honey foraging distinct from pursuit scoring; retain score values and the three permitted life-loss rules.
 
-### Bear locomotion and world feel
+## Project structure
 
-- Replace generic alternating leg swing with a speed-driven quadruped cycle (walk/trot/gallop), correctly paired fore/hind phases, shoulder/hip follow-through, footfall timing, torso bounce/roll, head counter-motion, acceleration/deceleration blend, pounce, turning and impact recovery.
-- Align audible footfalls to gait contacts and select surface-aware steps. Sprint should cost stamina and have meaningful recovery rather than being held continuously without consequence.
-- Improve biome diversity, continuous environmental dressing and atmospheric continuity while preserving performance in ordinary browsers.
+- `assets/models/` and `assets/textures/`: locally bundled models, maps and sidecars with provenance/attribution files.
+- `src/game/assets.ts`: typed asset manifest, local GLTF preload, animation-name mapping, loading progress and failure reporting.
+- `src/game/models.ts`: remaining non-character props/material adapters; no prominent procedural animal stand-ins.
+- `src/game/player.ts`: bear movement, stamina, stalk/sprint and imported bear animation state.
+- `src/game/food.ts`: wildlife actors, track publication, species behavior and imported prey mixers.
+- `src/game/world.ts` / `terrain.ts`: streamed landscape, PBR environment dressing and continuous global sampling.
+- `src/engine/input.ts`, `src/ui/`, `src/i18n/en.json`: stalk control, tuning feedback, local map and English guidance.
+- `tests/`, `scripts/smoke.mjs`: deterministic gameplay/source-load coverage and browser acceptance.
 
-## Validation / acceptance
+## Delivery
 
-1. Terrain/world are unbounded: safe and unsafe samples remain coherent at positive/negative coordinates across multiple chunk boundaries; player movement is not clamped; streamed chunks are deterministic and old chunk resources are released.
-2. Minimap updates heading/player and fades stale animal tracks; wildlife outside detection remains undisclosed.
-3. Healthy prey cannot be collected by a single close pass or immediate pounce; pursuit/exhaustion state and pounce success/failure are deterministic and species-sensitive.
-4. Running phase transitions are bounded and gait/footfall frequency follows speed without limb phase aliasing.
-5. Only poison, trap and trench fall can remove lives; six score targets, local-only storage and existing settings remain unchanged.
-6. Typecheck, unit tests, production build and desktop/mobile smoke pass. Update README, TODO, tests and PR description to distinguish tested scope from art fidelity.
+Keep implementation on `feat/photorealistic-wildlife-hunt`, based on merged `main`. Commit the new art/gameplay pass to that branch and open a new PR. Describe the actual assets and remaining fidelity limits; do not call it photorealistic unless the imported assets visibly meet that bar in the running scene.

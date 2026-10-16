@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import { CONFIG } from './config'
 import { fbm, smoothstep } from './noise'
-import { createNaturalTexture } from './textures'
+import { createNaturalTexture, loadAlpinePbrTextures } from './textures'
 
 export type GroundSample = { height: number; slope: number; normal: THREE.Vector3; snowMask: number }
 
@@ -87,8 +87,8 @@ export class Terrain {
         normals[vertex * 3] = ground.normal.x
         normals[vertex * 3 + 1] = ground.normal.y
         normals[vertex * 3 + 2] = ground.normal.z
-        uvs[vertex * 2] = x / 8
-        uvs[vertex * 2 + 1] = z / 8
+        uvs[vertex * 2] = x / 22.5
+        uvs[vertex * 2 + 1] = z / 22.5
         const altitude = smoothstep(8, 31, ground.height)
         const steep = smoothstep(0.34, 1.1, ground.slope)
         const base = meadow.clone().lerp(alpineGrass, altitude * 0.78).lerp(exposedRock, steep * 0.86)
@@ -116,28 +116,50 @@ export class Terrain {
   }
 
   createMaterial(): THREE.MeshStandardMaterial {
-    const groundTexture = createNaturalTexture('ground')
+    const pbr = loadAlpinePbrTextures()
+    const groundTexture = pbr ? null : createNaturalTexture('ground')
     const bumpTexture = groundTexture?.clone()
     if (bumpTexture) { bumpTexture.colorSpace = THREE.NoColorSpace; bumpTexture.needsUpdate = true }
-    const parameters: THREE.MeshStandardMaterialParameters = { color: '#ffffff', bumpScale: 0.14, roughness: 0.98, vertexColors: true }
-    if (groundTexture) parameters.map = groundTexture
-    if (bumpTexture) parameters.bumpMap = bumpTexture
+    const parameters: THREE.MeshStandardMaterialParameters = { color: '#ffffff', roughness: pbr ? 0.94 : 0.98, vertexColors: true }
+    if (pbr) {
+      parameters.map = pbr.rockDiffuse
+      parameters.normalMap = pbr.rockNormal
+      parameters.normalScale = new THREE.Vector2(0.44, 0.44)
+    } else {
+      if (groundTexture) parameters.map = groundTexture
+      if (bumpTexture) { parameters.bumpMap = bumpTexture; parameters.bumpScale = 0.14 }
+    }
     const material = new THREE.MeshStandardMaterial(parameters)
     material.onBeforeCompile = shader => {
       shader.uniforms.uSnowAmount = { value: 0 }
+      shader.uniforms.uSnowMap = { value: pbr?.snowDiffuse ?? groundTexture }
+      shader.uniforms.uSnowNormalMap = { value: pbr?.snowNormal ?? groundTexture }
+      shader.uniforms.uSnowNormalScale = { value: 0.22 }
       shader.vertexShader = shader.vertexShader
-        .replace('#include <common>', '#include <common>\nvarying float vGroundHeight;\nvarying float vGroundSteepness;')
-        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvGroundHeight = position.y;\nvGroundSteepness = 1.0 - normalize(normal).y;')
+        .replace('#include <common>', '#include <common>\nvarying float vGroundHeight;\nvarying float vGroundSteepness;\nvarying vec2 vTerrainUv;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvGroundHeight = position.y;\nvGroundSteepness = 1.0 - normalize(normal).y;\nvTerrainUv = uv;')
       shader.fragmentShader = shader.fragmentShader
-        .replace('#include <common>', '#include <common>\nuniform float uSnowAmount;\nvarying float vGroundHeight;\nvarying float vGroundSteepness;')
+        .replace('#include <common>', '#include <common>\nuniform float uSnowAmount;\nuniform sampler2D uSnowMap;\nuniform sampler2D uSnowNormalMap;\nuniform float uSnowNormalScale;\nvarying float vGroundHeight;\nvarying float vGroundSteepness;\nvarying vec2 vTerrainUv;')
         .replace('#include <color_fragment>', `#include <color_fragment>
           float highSnow = smoothstep(9.0, 35.0, vGroundHeight);
           float slopeSnow = 1.0 - smoothstep(0.28, 0.9, vGroundSteepness);
           float snowCover = clamp(highSnow * 0.7 + uSnowAmount * 0.62, 0.0, 0.93) * slopeSnow;
-          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.82, 0.87, 0.9), snowCover);`)
+          vec2 snowUv = vTerrainUv * 11.25;
+          vec3 snowAlbedo = texture2D(uSnowMap, snowUv).rgb;
+          diffuseColor.rgb = mix(diffuseColor.rgb, snowAlbedo, snowCover);`)
+        .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
+          roughnessFactor = mix(roughnessFactor, 0.92, snowCover);`)
+        .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+          #if defined(USE_NORMALMAP_TANGENTSPACE) && !defined(USE_TANGENT)
+            vec3 snowMapN = texture2D(uSnowNormalMap, vTerrainUv * 11.25).xyz * 2.0 - 1.0;
+            snowMapN.xy *= uSnowNormalScale;
+            mat3 snowTbn = getTangentFrame(-vViewPosition, normal, vTerrainUv * 11.25);
+            vec3 snowMappedNormal = normalize(snowTbn * normalize(snowMapN));
+            normal = normalize(mix(normal, snowMappedNormal, snowCover));
+          #endif`)
       ;(material.userData as { shader?: typeof shader }).shader = shader
     }
-    material.customProgramCacheKey = () => 'bear-rush-infinite-snow-terrain-v3'
+    material.customProgramCacheKey = () => 'bear-rush-polyhaven-alpine-pbr-v1'
     return material
   }
 

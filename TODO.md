@@ -1,22 +1,25 @@
-# Bear Rush — Follow-up status
+# Bear Rush — photoreal art and predator-tuning update
 
-## Implemented and verified
+## Completed gameplay changes
 
-- [x] Removed the fixed world slab and player edge clamp. Global terrain, river/trench sampling, safe footing and seeded terrain/forest chunks work at distant positive and negative coordinates.
-- [x] Streamed the 5×5 nearby chunk window as the bear travels and disposed distant terrain/water buffers; scenery instances and shared materials keep draw calls and assets bounded.
-- [x] Added a north-oriented minimap with bear heading, river/trench landmarks, nearby species markers, a finite 168 m range and 24-second track fade.
-- [x] Made prey cautious and difficult to catch: movement noise/wind-carried scent affect detection, species flee differently, stamina depletes only while pursued and a close pounce must land during a short exhaustion window. Early pounces miss and give prey a recovery/escape window.
-- [x] Added short sprint stamina/recovery, a speed-responsive walk/trot/gallop gait, paired footfall timing, body/head response and sound events aligned to contacts.
-- [x] Preserved six food types and scoring, exactly three life-loss hazards, desktop/touch/gamepad controls, and browser-local-only settings/best runs.
-- [x] Added tests for far-world chunking/seams, distant safe terrain, track fading, early versus exhaustion-window pounces, gait/stamina and mobile/desktop browser flow.
-- [x] Passed `pnpm typecheck`, `pnpm test` (48 tests), `pnpm build`, `pnpm smoke`, and `git diff --check` before commit.
-- [x] Updated README and the same open pull request branch `feat/realistic-mountain-forest-hunt` / PR #2.
+- [x] Added a quieter stalk pace: hold Ctrl on keyboard or use a light analog/touch-stick input. Sprinting and stalking cannot overlap.
+- [x] Connected hunting advantage to wind. The map shows wind flow, the legend explains scent direction, stalking lowers detection, and wildlife alerts depend on noise/scent.
+- [x] Made prey stamina drain only during an actively moving, close, correctly headed chase; stationary proximity or running past cannot exhaust an animal.
+- [x] Tightened species-specific chase endurance and exhaustion windows. Healthy wildlife cannot be contact-caught; a successful hunt needs exhaustion, close range, a front-on approach and pounce momentum.
+- [x] Made early/misaligned pounces miss, alert the animal, restore prey stamina and impose a 2.8-second recovery before another miss response.
+- [x] Reduced sprint to a short reserve with slower recovery; added unit coverage for stalk input, facing/momentum, chase direction, pursuit, and recovery.
+- [x] Preserved the merged endless world, finite/fading tracking, six foods, exactly three hazards, local-only saves, and desktop/touch/gamepad support.
+- [x] Added locally bundled CC0 2K rocky-ground and snow diffuse/normal maps to the streamed terrain shader; runtime uses no third-party asset URLs.
+- [x] Passed `pnpm typecheck`, `pnpm test` (55 tests), `pnpm build`, `pnpm smoke` (desktop/mobile), and `git diff --check`.
+- [x] Recorded source/license and rejection notes in [`docs/art-sourcing.md`](docs/art-sourcing.md).
 
-## Remaining visual limitation
+## Still required for the requested visual bar
 
-This update improves world continuity, map usability, gameplay difficulty, and the bear's animation logic. It remains a procedural 3D build, not photogrammetry or a production wildlife-asset set. A literal photorealistic/AAA presentation still needs reviewed rigged bear, prey and environment art assets; no paid, unreviewed or license-unclear models were added.
+- [ ] Replace the procedural bear, fawn, deer, elk, moose and salmon with genuinely photorealistic locally shipped models; each mammal needs usable quadruped locomotion animation.
+- [ ] Replace the procedural close forest/rock dressing with optimized scanned 3D assets while retaining infinite chunk streaming. The verified free CC0 fir packages are 322–957 MB and 2–8 million triangles and are not suitable to ship raw.
+- [ ] Implement local GLB loading, preloading/progress, animation state mapping, model scaling/orientation, resource disposal and explicit load-failure feedback.
+- [ ] Recheck art and movement in the running game, update documentation and raise a **new PR** from merged `main`.
 
-## Product boundaries
+## Source/capability status
 
-- No logins, accounts, backend persistence, online features or analytics.
-- The player can keep travelling; only the nearby scenery chunk window remains resident.
+PR #2 is merged; this work is on `feat/photorealistic-wildlife-hunt`. Verified source checks found no free animal set satisfying both the requested visual quality and usable in-game animation. The latest user direction is **no AI model generation and no purchases for this pass**; use verified free/open sources only and report remaining role gaps. Do not call procedural stand-ins photorealistic or claim production-ready art until suitable assets are integrated and previewed.
