@@ -8,7 +8,7 @@ import { Effects } from './fx'
 import { FoodField, type WildlifeTrack } from './food'
 import { HazardField } from './hazards'
 import { Player } from './player'
-import { createRun, eatFood, loseLife, speedCap, tick, type LoseReason, type RunState } from './rules'
+import { applyDamage, createRun, eatFood, speedCap, tick, type LoseReason, type RunState } from './rules'
 import { tuning } from './tuning'
 import { World } from './world'
 import type { Terrain } from './terrain'
@@ -37,7 +37,7 @@ export class Game {
   private readonly fx = new Effects()
   private time = 0
   private nextFood = CONFIG.hunt.foodSpawnMinSeconds
-  private nextHazard = 7
+  private nextHazard = CONFIG.hazards.initialDelay
   private tutorialTimer = 0
   private recoveryTimer = 0
   private invulnerabilityTimer = 0
@@ -78,7 +78,7 @@ export class Game {
     this.run = { ...createRun(), unranked: tuning.unranked }
     this.food.spawnInitial(this.player.position, this.world.terrain)
     this.nextFood = 8 + Math.random() * 5
-    this.nextHazard = 9
+    this.nextHazard = CONFIG.hazards.initialDelay
     this.tutorialTimer = tutorial ? 15 : 0
     this.recoveryTimer = 0
     this.invulnerabilityTimer = 0
@@ -163,9 +163,13 @@ export class Game {
     this.nextHazard -= dt
     if (this.nextHazard <= 0 && this.hazards.count < CONFIG.run.maxHazards) {
       const kind = Math.random() < 0.56 ? 'poison' : 'trap'
-      const point = this.findSafePoint(34 + Math.random() * 47)
+      const point = this.findHazardPoint()
       if (point) this.hazards.spawn(kind, point, this.world.terrain)
-      this.nextHazard = 12 + Math.random() * 9
+      const pressure = THREE.MathUtils.clamp(this.run.elapsed / 180, 0, 1)
+      const intervalScale = 1 - pressure * 0.18
+      const minInterval = CONFIG.hazards.minInterval * intervalScale
+      const maxInterval = CONFIG.hazards.maxInterval * intervalScale
+      this.nextHazard = minInterval + Math.random() * (maxInterval - minInterval)
     }
 
     const hazard = this.hazards.collisions(this.player.position)[0]
@@ -214,19 +218,25 @@ export class Game {
 
   private resolveDanger(reason: LoseReason, at: THREE.Vector3): void {
     if (this.invulnerabilityTimer > 0 || this.run.phase !== 'playing') return
-    const result = loseLife(this.run, reason)
-    if (!result.lifeLost) return
+    const hazardDamage = reason === 'poison' ? CONFIG.hazards.poisonDamage
+      : reason === 'trap' ? CONFIG.hazards.trapDamage
+        : Math.min(CONFIG.hazards.fallMaxDamage, CONFIG.hazards.fallBaseDamage + this.player.speed * CONFIG.hazards.fallSpeedDamage)
+    const result = applyDamage(this.run, hazardDamage, reason)
+    if (result.healthLost <= 0) return
     this.run = result.state
     this.player.hit()
     if (reason === 'fall') this.player.root.position.y = at.y - 1.1
     this.invulnerabilityTimer = CONFIG.run.invulnerabilitySeconds
-    this.recoveryTimer = this.run.phase === 'playing' ? CONFIG.run.recoverySeconds : 0
+    this.recoveryTimer = this.run.phase === 'playing'
+      ? result.lifeLost ? CONFIG.run.recoverySeconds : reason === 'fall' ? 1.05 : 0.42
+      : 0
     this.hooks.hurt()
-    this.cameraShake = 0.38
-    const copy = reason === 'poison' ? 'POISONOUS FOOD · −1 LIFE'
-      : reason === 'trap' ? 'BEAR TRAP · −1 LIFE' : 'SLIPPED INTO THE TRENCH · −1 LIFE'
+    this.cameraShake = 0.3 + result.healthLost / 100 * 0.42
+    const source = reason === 'poison' ? 'POISONOUS FOOD'
+      : reason === 'trap' ? 'BEAR TRAP' : 'SLIPPED INTO THE TRENCH'
+    const copy = `${source} · −${Math.round(result.healthLost)}% HEALTH${result.lifeLost ? ' · −1 LIFE' : ''}`
     this.audio.play(reason === 'poison' ? 'poison' : reason === 'trap' ? 'trap' : 'fall')
-    this.audio.play('life-loss')
+    if (result.lifeLost) this.audio.play('life-loss')
     this.audio.play('bear-hit')
     this.fx.burst(at, reason === 'poison' ? '#954d72' : reason === 'trap' ? '#a9aa9b' : '#8b8174', 16, 3.2)
     this.hooks.popup(copy, this.project(at), 'hurt')
@@ -252,9 +262,12 @@ export class Game {
     return 'moose'
   }
 
-  private findSafePoint(distance: number): THREE.Vector3 | null {
+  private findHazardPoint(): THREE.Vector3 | null {
+    const forward = this.player.forward
+    const heading = Math.atan2(forward.z, forward.x)
     for (let attempt = 0; attempt < 42; attempt += 1) {
-      const angle = Math.random() * Math.PI * 2
+      const angle = heading + (Math.random() * 2 - 1) * CONFIG.hazards.forwardHalfAngle
+      const distance = CONFIG.hazards.minDistance + Math.random() * (CONFIG.hazards.maxDistance - CONFIG.hazards.minDistance)
       const x = this.player.position.x + Math.cos(angle) * distance
       const z = this.player.position.z + Math.sin(angle) * distance
       if (this.world.terrain.isSafeSurface(x, z) && Math.abs(x - this.world.terrain.riverX(z)) > 8) {

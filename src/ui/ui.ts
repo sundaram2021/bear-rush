@@ -33,6 +33,7 @@ export class Ui {
   ) {
     this.root = document.getElementById('ui')!
     this.root.innerHTML = this.template()
+    this.root.querySelector('.stamina-bar')?.insertAdjacentHTML('afterend', '<div class="health-label"><span data-i18n="hud.health"></span><b data-slot="health">100%</b></div><div class="health-bar" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100" data-i18n-label="hud.health"><i></i></div>')
     this.minimap = new Minimap(this.root.querySelector<HTMLCanvasElement>('.minimap')!)
     this.root.addEventListener('click', e => this.onClick(e))
     this.root.addEventListener('input', e => this.onInput(e))
@@ -65,6 +66,20 @@ export class Ui {
     this.set('stamina', `${Math.round(stamina * 100)}%`)
     const staminaFill = this.root.querySelector<HTMLElement>('.stamina-bar i')
     if (staminaFill) staminaFill.style.transform = `scaleX(${Math.max(0, Math.min(1, stamina))})`
+    const health = Math.max(0, Math.min(100, run.health))
+    this.set('health', `${Math.round(health)}%`)
+    const healthFill = this.root.querySelector<HTMLElement>('.health-bar i')
+    const healthBar = this.root.querySelector<HTMLElement>('.health-bar')
+    const healthLabel = this.root.querySelector<HTMLElement>('.health-label')
+    if (healthFill) healthFill.style.transform = `scaleX(${health / 100})`
+    const warning = health <= 60 && health > 30
+    const critical = health <= 30
+    healthBar?.setAttribute('aria-valuenow', String(Math.round(health)))
+    healthBar?.classList.toggle('is-warning', warning)
+    healthBar?.classList.toggle('is-critical', critical)
+    healthLabel?.classList.toggle('is-warning', warning)
+    healthLabel?.classList.toggle('is-critical', critical)
+    this.root.querySelector<HTMLElement>('.hurt-vignette')?.classList.toggle('is-critical', health <= 25 && run.phase === 'playing')
     const mapCanvas = this.root.querySelector<HTMLCanvasElement>('.minimap')
     const mapLabel = `${this.i18n.t('hud.map.label')} ${this.i18n.t('hud.map.wind')}`
     if (mapCanvas?.getAttribute('aria-label') !== mapLabel) mapCanvas?.setAttribute('aria-label', mapLabel)

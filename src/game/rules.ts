@@ -7,6 +7,7 @@ export type RunState = {
   loseReason?: LoseReason
   score: number
   lives: number
+  health: number
   elapsed: number
   distance: number
   collected: number
@@ -17,7 +18,7 @@ export type RunState = {
 
 export function createRun(): RunState {
   return {
-    unranked: false, phase: 'playing', score: 0, lives: CONFIG.run.lives,
+    unranked: false, phase: 'playing', score: 0, lives: CONFIG.run.lives, health: 100,
     elapsed: 0, distance: 0, collected: 0, combo: 0, comboTimer: 0,
     tally: Object.fromEntries(FOOD_KINDS.map(kind => [kind, 0])) as Record<FoodKind, number>,
   }
@@ -54,13 +55,33 @@ export function eatFood(state: RunState, kind: FoodKind): { state: RunState; poi
   }
 }
 
-/** Poison, traps and trench falls each cost exactly one life; no other reason is supported. */
-export function loseLife(state: RunState, reason: LoseReason): { state: RunState; lifeLost: boolean } {
-  if (state.phase !== 'playing') return { state, lifeLost: false }
+/** Health chips away per hazard; only zero health consumes a life. */
+export function applyDamage(state: RunState, amount: number, reason: LoseReason): { state: RunState; healthLost: number; lifeLost: boolean } {
+  if (state.phase !== 'playing') return { state, healthLost: 0, lifeLost: false }
+  const damage = Math.min(100, Math.max(0, Math.round(amount)))
+  if (damage === 0) return { state, healthLost: 0, lifeLost: false }
+  const healthLost = Math.min(state.health, damage)
+  const health = Math.max(0, state.health - damage)
+  if (health > 0) {
+    return { state: { ...state, health, combo: 0, comboTimer: 0 }, healthLost, lifeLost: false }
+  }
   const lives = Math.max(0, state.lives - 1)
-  const next: RunState = { ...state, lives, combo: 0, comboTimer: 0 }
   return {
-    state: lives === 0 ? { ...next, phase: 'lost', loseReason: reason } : next,
+    state: {
+      ...state,
+      health: lives === 0 ? 0 : CONFIG.hazards.healthAfterLife,
+      lives,
+      combo: 0,
+      comboTimer: 0,
+      ...(lives === 0 ? { phase: 'lost' as const, loseReason: reason } : {}),
+    },
+    healthLost,
     lifeLost: true,
   }
+}
+
+/** Compatibility helper for tests/tools that intentionally consume one whole life. */
+export function loseLife(state: RunState, reason: LoseReason): { state: RunState; lifeLost: boolean } {
+  const result = applyDamage(state, state.health, reason)
+  return { state: result.state, lifeLost: result.lifeLost }
 }

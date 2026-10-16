@@ -43,7 +43,7 @@ Wild animals are sparse, wary and species-specific. They notice the bear based o
 
 ## Dangers
 
-**Only these three hazards can remove a life:** poisonous food, slipping from a mountain into the trench, and bear traps. The run starts with three lives and ends only when all are lost. Water, ordinary terrain, missed pounces and elapsed time do not remove lives.
+**Only these three hazards can damage the bear:** poisonous food removes 36 health points, traps remove 44, and trench-fall damage starts at 42 and rises with running speed (capped at 68). The health bar turns amber/red as it drops. At 0%, one heart is lost; a surviving bear recovers at 60% health, with no passive regeneration. The game starts with three hearts and ends only when all are gone. Hits briefly stagger the bear, and fall damage is larger at speed. Hazards appear in a forward arc roughly 20–44 m ahead every 5.2–8.6 seconds; this interval tightens as the hunt continues, but players can see and dodge them. Water, ordinary terrain, missed pounces and elapsed time do not cause damage.
 
 ## Privacy and settings
 
@@ -67,4 +67,4 @@ No login, sign-up, backend, online leaderboard or analytics. Settings and person
 
 ## Verification
 
-The follow-up is covered by `pnpm typecheck`, `pnpm test`, `pnpm build`, and `pnpm smoke`. Unit and browser tests check global terrain/chunk continuity, distant streaming, limited/fading tracks, missed versus exhaustion-window pounces, gait/stamina behavior, the exact three dangers, local score persistence, settings and mobile controls.
+The follow-up is covered by `pnpm typecheck`, `pnpm test`, `pnpm build`, and `pnpm smoke`. Unit and browser tests check global terrain/chunk continuity, distant streaming, limited/fading tracks, missed versus exhaustion-window pounces, gait/stamina behavior, percentage health and life thresholds, the exact three damage sources, local score persistence, settings and mobile controls.

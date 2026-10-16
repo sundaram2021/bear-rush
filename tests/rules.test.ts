@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { CONFIG, FOOD_KINDS } from '../src/game/config'
-import { createRun, eatFood, loseLife, speedCap, tick } from '../src/game/rules'
+import { applyDamage, createRun, eatFood, loseLife, speedCap, tick } from '../src/game/rules'
 
 describe('mountain hunt rules', () => {
   it('starts with three lives and has no time-based ending', () => {
     let run = createRun()
     expect(run.lives).toBe(3)
+    expect(run.health).toBe(100)
     run = tick(run, 360, 0)
     expect(run.phase).toBe('playing')
     expect(run.lives).toBe(3)
@@ -23,6 +24,29 @@ describe('mountain hunt rules', () => {
     expect(run.elapsed).toBe(2)
     expect(run.distance).toBe(16)
     expect(run.lives).toBe(3)
+  })
+
+  it('chips health by percent and removes a life only when health reaches zero', () => {
+    let run = createRun()
+    let result = applyDamage(run, CONFIG.hazards.poisonDamage, 'poison')
+    expect(result.healthLost).toBe(36)
+    expect(result.lifeLost).toBe(false)
+    run = result.state
+    expect(run.health).toBe(64)
+    expect(run.lives).toBe(3)
+
+    result = applyDamage(run, CONFIG.hazards.trapDamage, 'trap')
+    expect(result.lifeLost).toBe(false)
+    run = result.state
+    expect(run.health).toBe(20)
+
+    result = applyDamage(run, CONFIG.hazards.poisonDamage, 'poison')
+    expect(result.healthLost).toBe(20)
+    expect(result.lifeLost).toBe(true)
+    run = result.state
+    expect(run.lives).toBe(2)
+    expect(run.health).toBe(CONFIG.hazards.healthAfterLife)
+    expect(run.phase).toBe('playing')
   })
 
   it('supports all six scored food types and combo multipliers', () => {
