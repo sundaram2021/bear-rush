@@ -1,0 +1,34 @@
+name: Verify bypass on Bear Rush deployment 8060983607
+on:
+  push:
+    branches: [smoke/bear-rush-deployment-8060983607]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check if the Bear Rush repository secret is available
+        id: config
+        env:
+          AVAILABLE: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET != '' }}
+        run: |
+          echo "available=$AVAILABLE" >> "$GITHUB_OUTPUT"
+          echo "Repository bypass secret available: $AVAILABLE"
+          printf '/#game\n/#ui\n' > "$RUNNER_TEMP/links.txt"
+      - name: Verify both anchors on the fixed Vercel preview
+        if: steps.config.outputs.available == 'true'
+        id: bypass
+        uses: sundaram2021/citation-ci@598c67318ab4caf7b7f0e1309e7274c991ae055b
+        with:
+          production: https://bear-rush.vercel.app
+          preview: https://bear-rush-eoquwbx9g-sundaram2021s-projects.vercel.app
+          file: ${{ runner.temp }}/links.txt
+          vercel-protection-bypass: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+          mode: enforce
+      - name: Confirm authenticated verdict
+        if: steps.config.outputs.available == 'true'
+        env:
+          CODE: ${{ steps.bypass.outputs.exit-code }}
+        run: test "$CODE" = 0
