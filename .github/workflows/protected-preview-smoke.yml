@@ -1,0 +1,28 @@
+name: Verify protected Vercel preview
+on: deployment_status
+permissions:
+  contents: read
+jobs:
+  compare:
+    if: github.event.deployment_status.state == 'success' && github.event.deployment.environment == 'Preview' && github.event.deployment_status.creator.login == 'vercel[bot]' && github.event.deployment.creator.login == 'vercel[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Validate Bear Rush deployment and prepare citation inventory
+        env:
+          PREVIEW: ${{ github.event.deployment_status.environment_url }}
+        run: |
+          [[ "$PREVIEW" =~ ^https://bear-rush-[a-z0-9]{9}-sundaram2021s-projects\.vercel\.app/?$ ]]
+          printf '/#game\n/#ui\n' > "$RUNNER_TEMP/links.txt"
+      - name: Check without protection bypass
+        id: without
+        uses: sundaram2021/citation-ci@v1
+        with:
+          production: https://bear-rush.vercel.app
+          preview: ${{ github.event.deployment_status.environment_url }}
+          file: ${{ runner.temp }}/links.txt
+          mode: report
+      - name: Record the public baseline verdict
+        env:
+          CODE: ${{ steps.without.outputs.exit-code }}
+        run: echo "Unauthenticated comparison exit code=$CODE"
