@@ -1,0 +1,65 @@
+name: Smoke test Citation CI v1 against Bear Rush
+on: pull_request
+permissions:
+  contents: read
+jobs:
+  check:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'smoke/citation-ci-v1-anchors'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Serve the checked-in homepage and write the inventory
+        run: |
+          mkdir "$RUNNER_TEMP/preview"
+          cp index.html "$RUNNER_TEMP/preview/"
+          printf '%s\n' '/#game' '/#ui' > "$RUNNER_TEMP/citations.txt"
+          python3 -m http.server 43111 --bind 127.0.0.1 --directory "$RUNNER_TEMP/preview" > "$RUNNER_TEMP/server.log" 2>&1 &
+          curl -fsS --retry 8 --retry-connrefused http://127.0.0.1:43111/ -o /dev/null
+      - name: Baseline must pass
+        id: baseline
+        uses: sundaram2021/citation-ci@v1
+        with:
+          production: https://bear-rush.vercel.app
+          preview: http://127.0.0.1:43111
+          file: ${{ runner.temp }}/citations.txt
+          mode: enforce
+      - name: Remove only the game anchor from the runner copy
+        run: |
+          grep -q 'id="game"' index.html
+          sed 's/id="game"/id="game-renamed"/' index.html > "$RUNNER_TEMP/preview/index.html"
+          test "$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:43111/)" = 200
+      - name: Changed anchor must fail enforcement
+        id: broken
+        continue-on-error: true
+        uses: sundaram2021/citation-ci@v1
+        with:
+          production: https://bear-rush.vercel.app
+          preview: http://127.0.0.1:43111
+          file: ${{ runner.temp }}/citations.txt
+          mode: enforce
+      - name: Assert the regression and restore the original HTML
+        env:
+          BASE: ${{ steps.baseline.outputs.exit-code }}
+          OUTCOME: ${{ steps.broken.outcome }}
+          CODE: ${{ steps.broken.outputs.exit-code }}
+        run: |
+          test "$BASE" = 0
+          test "$OUTCOME" = failure
+          test "$CODE" = 1
+          cp index.html "$RUNNER_TEMP/preview/"
+      - name: Restored anchor must pass
+        id: repaired
+        uses: sundaram2021/citation-ci@v1
+        with:
+          production: https://bear-rush.vercel.app
+          preview: http://127.0.0.1:43111
+          file: ${{ runner.temp }}/citations.txt
+          mode: enforce
+      - name: Assert repaired exit code
+        env:
+          CODE: ${{ steps.repaired.outputs.exit-code }}
+        run: test "$CODE" = 0
